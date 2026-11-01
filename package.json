@@ -7,7 +7,9 @@
     "build": "tsc && node scripts/copy-static.js",
     "start": "npx serve docs",
     "dev": "npm run build && npm run start",
-    "render:maps": "node scripts/render-maps.mjs"
+    "render:maps": "node scripts/render-maps.mjs",
+    "pretest": "npm run build",
+    "test": "node --test"
   },
   "devDependencies": {
     "typescript": "^5.0.0"
