@@ -3,6 +3,7 @@ import {
   convertRasterToPattern,
   countActiveCells,
   type ChannelComparator,
+  type DitherAlgorithm,
   type ImageConversionMode,
   type ImageConversionSettings,
 } from "./imagePatternConversion.js";
@@ -76,12 +77,14 @@ export function initImageImportOverlay(options: ImageImportOverlayOptions) {
     elements.brightnessPanel.hidden = mode !== "brightness";
     elements.targetPanel.hidden = mode !== "target-color";
     elements.rgbPanel.hidden = mode !== "rgb-rules";
+    elements.ditherPanel.hidden = mode !== "dither";
   };
 
   const updateNumericLabels = () => {
     elements.brightnessValue.textContent = elements.brightnessThreshold.value;
     elements.targetToleranceValue.textContent = elements.targetTolerance.value;
     elements.alphaValue.textContent = elements.alphaThreshold.value;
+    elements.ditherValue.textContent = elements.ditherDensity.value;
     elements.redValue.textContent = elements.redThreshold.value;
     elements.greenValue.textContent = elements.greenThreshold.value;
     elements.blueValue.textContent = elements.blueThreshold.value;
@@ -107,6 +110,11 @@ export function initImageImportOverlay(options: ImageImportOverlayOptions) {
   const buildSettings = (): ImageConversionSettings => ({
     alphaThreshold: Number.parseInt(elements.alphaThreshold.value, 10),
     mode: elements.modeSelect.value as ImageConversionMode,
+    dither: {
+      algorithm: elements.ditherAlgorithm.value as DitherAlgorithm,
+      polarity: elements.ditherPolarity.value as "light" | "dark",
+      density: Number.parseInt(elements.ditherDensity.value, 10),
+    },
     brightness: {
       comparator: elements.brightnessComparator.value as "gte" | "lte",
       threshold: Number.parseInt(elements.brightnessThreshold.value, 10),
@@ -266,6 +274,9 @@ export function initImageImportOverlay(options: ImageImportOverlayOptions) {
     elements.greenThreshold,
     elements.blueComparator,
     elements.blueThreshold,
+    elements.ditherAlgorithm,
+    elements.ditherPolarity,
+    elements.ditherDensity,
     elements.widthInput,
     elements.heightInput,
   ].forEach((control) => {
