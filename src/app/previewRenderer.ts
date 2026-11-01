@@ -46,30 +46,40 @@ function patternSourceFromMatrix(pattern: number[][]): PatternSource {
   };
 }
 
-function hexToRgb(hex: string): RgbColor {
+export function hexToRgb(hex: string): RgbColor {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
     ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
     : { r: 255, g: 255, b: 255 };
 }
 
+/**
+ * Returns the team colour that should replace the primary for a pixel at
+ * (x, y) in a canvas of the given width/height. Sections are radial wedges
+ * from the canvas centre, matching the popover's team-colour wheel.
+ * `teamColors` must already be parsed (see hexToRgb) so this stays cheap to
+ * call once per pixel.
+ */
+export function teamPrimaryFor(
+  teamColors: RgbColor[] | null,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): RgbColor | null {
+  if (!teamColors || teamColors.length === 0) return null;
+  const dx = x - width / 2;
+  const dy = y - height / 2;
+  // atan2 returns -PI..PI measured from the +x axis; rotate so 0 points up
+  // and sectors progress clockwise, matching the wheel's wedge layout.
+  let angle = Math.atan2(dy, dx) + Math.PI / 2;
+  angle = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  const idx = Math.floor((angle / (Math.PI * 2)) * teamColors.length) % teamColors.length;
+  return teamColors[idx];
+}
+
 export function createPreviewRenderer(options: PreviewRendererOptions) {
   const { canvas, context, primaryColorInput, secondaryColorInput, canvasWrap, getZoom, getSimMap, getTeamColors } = options;
-
-  // Returns the team color that should replace the primary for a pixel at
-  // (x, y) in the canvas of the given width/height. Sections are radial wedges
-  // from the canvas centre, matching the popover's team-color wheel.
-  const teamPrimaryFor = (teamColors: string[] | null, x: number, y: number, width: number, height: number): RgbColor | null => {
-    if (!teamColors || teamColors.length === 0) return null;
-    const dx = x - width / 2;
-    const dy = y - height / 2;
-    // atan2 returns -PI..PI measured from the +x axis; rotate so 0 points up
-    // and sectors progress clockwise, matching the wheel's wedge layout.
-    let angle = Math.atan2(dy, dx) + Math.PI / 2;
-    angle = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-    const idx = Math.floor((angle / (Math.PI * 2)) * teamColors.length) % teamColors.length;
-    return hexToRgb(teamColors[idx]);
-  };
 
   return function renderPreview(pattern: string | number[][], isScrap = false) {
     const source =
@@ -83,7 +93,8 @@ export function createPreviewRenderer(options: PreviewRendererOptions) {
 
     const primaryRgb = hexToRgb(primaryColorInput.value);
     const secondaryRgb = hexToRgb(secondaryColorInput.value);
-    const teamColors = getTeamColors?.() ?? null;
+    // Parse once per render, not once per pixel.
+    const teamColors = getTeamColors?.()?.map(hexToRgb) ?? null;
 
     const simMap = getSimMap?.() ?? null;
 
@@ -178,7 +189,7 @@ export function createPreviewRenderer(options: PreviewRendererOptions) {
     secondaryRgb: RgbColor,
     availW: number,
     availH: number,
-    teamColors: string[] | null,
+    teamColors: RgbColor[] | null,
   ) {
     const { image, mask, width: mapW, height: mapH } = simMap;
     const dpr = window.devicePixelRatio || 1;
