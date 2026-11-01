@@ -1,3 +1,4 @@
+import { lineCells } from "./lineGeometry.js";
 import { getCircleCells, type GridPoint } from "./circleGeometry.js";
 import type { ClipboardManager } from "./clipboard.js";
 import type { DrawingTools } from "./drawingTools.js";
@@ -67,6 +68,9 @@ type GridManagerOptions = {
   fixedWidth?: number;
   fixedHeight?: number;
   onPatternChange: () => void;
+  /** Called when a pencil stroke starts / ends so history can group it as one undo step. */
+  onStrokeStart?: () => void;
+  onStrokeEnd?: () => void;
 };
 
 // ─── Implementation ───────────────────────────────────────────────────────────
@@ -86,6 +90,8 @@ export function createGridManager(options: GridManagerOptions): GridManager {
     fixedWidth,
     fixedHeight,
     onPatternChange,
+    onStrokeStart,
+    onStrokeEnd,
   } = options;
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -94,6 +100,11 @@ export function createGridManager(options: GridManagerOptions): GridManager {
   let tileHeight = parseInt(tileHeightInput.value);
   let isMouseDown = false;
   let penToggleState: boolean | null = null;
+  // A pencil stroke runs from mouse-down to mouse-up. `lastPencilCell` lets us
+  // join consecutive pointer positions so a fast drag doesn't skip cells.
+  let strokeActive = false;
+  let lastPencilCell: GridPoint | null = null;
+  let pencilPaintedOnMouseDown = false;
   let currentHeight = 0;
   let currentWidth = 0;
   let patternState: number[][] = [];
@@ -320,6 +331,19 @@ export function createGridManager(options: GridManagerOptions): GridManager {
     pastePreviewCells = pts;
   };
 
+  // ── Pencil stroke lifecycle ───────────────────────────────────────────────
+  const beginStroke = () => {
+    if (strokeActive) return;
+    strokeActive = true;
+    onStrokeStart?.();
+  };
+  const endStroke = () => {
+    lastPencilCell = null;
+    if (!strokeActive) return;
+    strokeActive = false;
+    onStrokeEnd?.();
+  };
+
   // ── Pencil brush ──────────────────────────────────────────────────────────
   const applyPencilBrush = (cx: number, cy: number, activate: boolean) => {
     const size = toolState.getPencilSize();
@@ -481,14 +505,17 @@ export function createGridManager(options: GridManagerOptions): GridManager {
       gridDiv.classList.add("select-mode");
     }
   });
+  const releaseShift = () => {
+    isShiftDown = false;
+    // Only remove highlight if select tool isn't permanently active
+    if (toolState.getCurrentTool() !== "selectArea") {
+      selectAreaBtn?.classList.remove("selected");
+    }
+    gridDiv.classList.remove("select-mode");
+  };
   document.addEventListener("keyup", (e) => {
     if (e.key === "Shift") {
-      isShiftDown = false;
-      // Only remove highlight if select tool isn't permanently active
-      if (toolState.getCurrentTool() !== "selectArea") {
-        selectAreaBtn?.classList.remove("selected");
-      }
-      gridDiv.classList.remove("select-mode");
+      releaseShift();
     }
   });
 
@@ -496,6 +523,7 @@ export function createGridManager(options: GridManagerOptions): GridManager {
   document.body.addEventListener("mouseup", () => {
     isMouseDown = false;
     penToggleState = null;
+    endStroke();
     // Commit Select Area drag regardless of current tool if we started one
     if (selectAreaStart && selectAreaEnd) {
       const rect = buildRectSet(selectAreaStart, selectAreaEnd);
@@ -511,7 +539,17 @@ export function createGridManager(options: GridManagerOptions): GridManager {
     }
   });
 
+  // If the window loses focus (alt-tab) mid-stroke or while Shift is held, the
+  // matching mouseup/keyup never reaches us — reset so nothing gets stuck.
+  window.addEventListener("blur", () => {
+    isMouseDown = false;
+    penToggleState = null;
+    endStroke();
+    if (isShiftDown) releaseShift();
+  });
+
   gridDiv.addEventListener("mouseleave", () => {
+    lastPencilCell = null;
     clearCirclePreview();
     clearStarPreview();
     clearLinePreview();
@@ -739,9 +777,22 @@ export function createGridManager(options: GridManagerOptions): GridManager {
         // Capture x/y in closure (re-assign to avoid stale capture issue)
         const cx = x, cy = y;
 
-        cell.onmousedown = () => {
+        cell.onmousedown = (e: MouseEvent) => {
           const actualTool = toolState.getCurrentTool();
           const tool = isShiftDown ? "selectArea" : actualTool;
+          pencilPaintedOnMouseDown = false;
+
+          // Paint the cell the stroke starts on, and decide whether this
+          // stroke draws or erases from that cell's state.
+          if (tool === "pencil" && e.button === 0) {
+            beginStroke();
+            penToggleState = !isCellActive(cx, cy);
+            applyPencilBrush(cx, cy, penToggleState);
+            lastPencilCell = { x: cx, y: cy };
+            pencilPaintedOnMouseDown = true;
+            onPatternChange();
+            return;
+          }
 
           if (tool === "selectArea") {
             selectAreaStart = { x: cx, y: cy };
@@ -765,6 +816,12 @@ export function createGridManager(options: GridManagerOptions): GridManager {
           const sel = activeSelection.size > 0 ? activeSelection : undefined;
 
           if (tool === "pencil") {
+            // A real mouse press already painted on mouse-down; this click is
+            // just its echo. A synthetic click (no mouse-down) still paints.
+            if (pencilPaintedOnMouseDown) {
+              pencilPaintedOnMouseDown = false;
+              return;
+            }
             const shouldActivate = !isCellActive(cx, cy);
             applyPencilBrush(cx, cy, shouldActivate);
             onPatternChange();
@@ -816,8 +873,14 @@ export function createGridManager(options: GridManagerOptions): GridManager {
           }
 
           if (isMouseDown && tool === "pencil") {
+            beginStroke();
             if (penToggleState === null) penToggleState = !isCellActive(cx, cy);
-            applyPencilBrush(cx, cy, penToggleState);
+            // Join the previous cell to this one so fast drags leave no gaps.
+            const from = lastPencilCell ?? { x: cx, y: cy };
+            for (const [lx, ly] of lineCells(from.x, from.y, cx, cy)) {
+              applyPencilBrush(lx, ly, penToggleState);
+            }
+            lastPencilCell = { x: cx, y: cy };
             onPatternChange();
             return;
           }

@@ -240,6 +240,8 @@ document.addEventListener("DOMContentLoaded", () => {
     toolState,
     clipboard,
     onPatternChange: () => { if (!isScrapActive) updateOutput(); },
+    onStrokeStart: () => mainHistory.beginBatch(),
+    onStrokeEnd: () => { mainHistory.endBatch(); updateHistoryButtons(); },
   });
 
   const mainDrawingTools = createDrawingTools({
@@ -272,6 +274,8 @@ document.addEventListener("DOMContentLoaded", () => {
     fixedWidth: SCRAP_SIZE,
     fixedHeight: SCRAP_SIZE,
     onPatternChange: () => { if (isScrapActive) updateOutput(); },
+    onStrokeStart: () => scrapHistory.beginBatch(),
+    onStrokeEnd: () => { scrapHistory.endBatch(); updateHistoryButtons(); },
   });
 
   const scrapDrawingTools = createDrawingTools({
