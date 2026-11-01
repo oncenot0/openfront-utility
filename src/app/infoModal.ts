@@ -4,7 +4,16 @@ const CHANGELOG_LINK =
   "https://github.com/BrayFlex/openfront-utility/blob/main/CHANGELOG.md";
 
 const escapeHtml = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+// Only http(s), same-page (#) and relative links become anchors; anything else
+// (javascript:, data:, ...) is left as plain text.
+const isSafeHref = (url: string) => /^(https?:\/\/|#|\.{0,2}\/)/i.test(url);
 
 const renderInline = (line: string) => {
   let out = escapeHtml(line);
@@ -13,7 +22,10 @@ const renderInline = (line: string) => {
   out = out.replace(/(^|[^*])\*([^*\n]+)\*(?![*])/g, "$1<em>$2</em>");
   out = out.replace(
     /\[([^\]]+)\]\(([^)\s]+)\)/g,
-    '<a href="$2" target="_blank" rel="noopener">$1</a>'
+    (match, text: string, url: string) =>
+      isSafeHref(url)
+        ? `<a href="${url}" target="_blank" rel="noopener">${text}</a>`
+        : match
   );
   return out;
 };
