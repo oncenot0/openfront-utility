@@ -24,6 +24,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: npm test
       - name: Wait before deploy
         run: sleep ${{ env.DEPLOY_DELAY_SECONDS }}
 
