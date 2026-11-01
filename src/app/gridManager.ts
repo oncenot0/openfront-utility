@@ -1,4 +1,4 @@
-import { lineCells } from "./lineGeometry.js";
+import { brushExtent, lineCells } from "./lineGeometry.js";
 import { getCircleCells, type GridPoint } from "./circleGeometry.js";
 import type { ClipboardManager } from "./clipboard.js";
 import type { DrawingTools } from "./drawingTools.js";
@@ -347,10 +347,11 @@ export function createGridManager(options: GridManagerOptions): GridManager {
   // ── Pencil brush ──────────────────────────────────────────────────────────
   const applyPencilBrush = (cx: number, cy: number, activate: boolean) => {
     const size = toolState.getPencilSize();
-    const radius = Math.floor(size / 2);
+    // Exactly size x size cells (see brushExtent for how even sizes are placed).
+    const { before, after } = brushExtent(size);
     const sel = activeSelection.size > 0 ? activeSelection : undefined;
-    for (let by = cy - radius; by <= cy + radius; by++) {
-      for (let bx = cx - radius; bx <= cx + radius; bx++) {
+    for (let by = cy - before; by <= cy + after; by++) {
+      for (let bx = cx - before; bx <= cx + after; bx++) {
         if (!isInBounds(bx, by)) continue;
         if (sel && !sel.has(key(bx, by))) continue;
         setCellActive(bx, by, activate);

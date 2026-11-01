@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lineCells } from "../docs/app/lineGeometry.js";
+import { lineCells, brushExtent } from "../docs/app/lineGeometry.js";
 
 test("lineCells includes both endpoints and has no gaps", () => {
   for (const [x0, y0, x1, y1] of [[0, 0, 10, 0], [0, 0, 0, 7], [3, 3, 12, 9], [12, 9, 3, 3], [5, 5, 5, 5], [0, 10, 10, 0]]) {
@@ -16,4 +16,15 @@ test("lineCells includes both endpoints and has no gaps", () => {
 
 test("a fast horizontal drag fills every cell in between", () => {
   assert.deepEqual(lineCells(50, 20, 60, 20).map((p) => p[0]), [50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60]);
+});
+
+test("brushExtent covers exactly size x size cells for every size", () => {
+  for (let size = 1; size <= 10; size++) {
+    const { before, after } = brushExtent(size);
+    assert.equal(before + after + 1, size);
+    assert.ok(before >= 0 && after >= before);
+  }
+  assert.deepEqual(brushExtent(1), { before: 0, after: 0 });
+  assert.deepEqual(brushExtent(2), { before: 0, after: 1 });
+  assert.deepEqual(brushExtent(3), { before: 1, after: 1 });
 });

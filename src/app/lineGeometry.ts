@@ -30,3 +30,13 @@ export function lineCells(
   }
   return cells;
 }
+
+/**
+ * How far a square brush of `size` cells extends before/after the cell under
+ * the cursor, so the footprint is exactly size x size. Even sizes can't be
+ * centred on one cell, so they extend one extra cell to the right/bottom.
+ */
+export function brushExtent(size: number): { before: number; after: number } {
+  const n = Math.max(1, Math.floor(size));
+  return { before: Math.floor((n - 1) / 2), after: Math.floor(n / 2) };
+}
