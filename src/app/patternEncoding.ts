@@ -36,7 +36,14 @@ export class PatternDecoder {
 
   static base64ToBytes(base64: string): Uint8Array {
     base64 = base64.replace(/-/g, "+").replace(/_/g, "/");
-    const bin = atob(base64);
+    let bin: string;
+    try {
+      bin = atob(base64);
+    } catch {
+      throw new Error(
+        "That doesn't look like a pattern code. Paste the Base64 code or a preview link.",
+      );
+    }
     return Uint8Array.from(bin, c => c.charCodeAt(0));
   }
 
@@ -100,6 +107,20 @@ export function generatePatternBase64(
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/\=/g, "");
+}
+
+/**
+ * Accepts either a bare pattern code or one of this app's own preview links
+ * (`https://host/path#<code>?primary=ffffff&secondary=000000`) and returns just
+ * the code, so pasting a copied link into Import works.
+ */
+export function normalizePatternInput(input: string): string {
+  let code = input.trim();
+  const hashIndex = code.indexOf("#");
+  if (hashIndex !== -1) code = code.slice(hashIndex + 1);
+  const queryIndex = code.indexOf("?");
+  if (queryIndex !== -1) code = code.slice(0, queryIndex);
+  return code.trim();
 }
 
 export function decodePatternBase64(base64: string) {

@@ -662,13 +662,8 @@ document.addEventListener("DOMContentLoaded", () => {
     tileHeightInput,
     tileWidthValue,
     tileHeightValue,
-    onPatternLoaded: (pattern) => {
-      // Also update scale tabs from decoded
-      const base64 = base64Input.value;
-      try {
-        const decoded = decodePatternBase64(base64);
-        setScale(decoded.scale);
-      } catch { /* ignore */ }
+    onPatternLoaded: (pattern, scale) => {
+      setScale(scale);
       mainGrid.generateGrid(pattern);
     },
   });

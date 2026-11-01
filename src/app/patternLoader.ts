@@ -1,4 +1,4 @@
-import { decodePatternBase64 } from "./patternEncoding.js";
+import { decodePatternBase64, normalizePatternInput } from "./patternEncoding.js";
 
 type PatternLoaderOptions = {
   base64Input: HTMLInputElement;
@@ -6,7 +6,7 @@ type PatternLoaderOptions = {
   tileHeightInput: HTMLInputElement;
   tileWidthValue: HTMLInputElement;
   tileHeightValue: HTMLInputElement;
-  onPatternLoaded: (pattern: number[][]) => void;
+  onPatternLoaded: (pattern: number[][], scale: number) => void;
 };
 
 export function createPatternLoader(options: PatternLoaderOptions) {
@@ -20,7 +20,7 @@ export function createPatternLoader(options: PatternLoaderOptions) {
   } = options;
 
   return function loadFromBase64() {
-    const base64 = base64Input.value;
+    const base64 = normalizePatternInput(base64Input.value);
     if (!base64) return;
     let decoded;
     try {
@@ -29,11 +29,11 @@ export function createPatternLoader(options: PatternLoaderOptions) {
       alert((e as Error).message);
       return;
     }
-    const { pattern, tileWidth, tileHeight } = decoded;
+    const { pattern, tileWidth, tileHeight, scale } = decoded;
     tileWidthInput.value = tileWidth.toString();
     tileHeightInput.value = tileHeight.toString();
     tileWidthValue.value = tileWidthInput.value;
     tileHeightValue.value = tileHeightInput.value;
-    onPatternLoaded(pattern);
+    onPatternLoaded(pattern, scale);
   };
 }
