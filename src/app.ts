@@ -26,6 +26,7 @@ import { createMirrorControls } from "./app/mirrorControls.js";
 import { createCheatSheet } from "./app/cheatSheet.js";
 import { setupToolShortcuts } from "./app/toolShortcuts.js";
 import { setupTooltips } from "./app/tooltips.js";
+import { setupOfflineSupport } from "./app/offlineSupport.js";
 import { createHistoryManager } from "./app/undoRedo.js";
 import { initWorkspaceControls } from "./app/workspaceControls.js";
 import { initThemeToggle } from "./app/themeToggle.js";
@@ -314,6 +315,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const cheatSheet = createCheatSheet(document.getElementById("shortcutsBtn"));
   setupToolShortcuts({ toolState, mirror: mirrorControls, cheatSheet });
   setupTooltips();
+  setupOfflineSupport();
 
   // Helper — active grid
   const activeGrid = () => (isScrapActive ? scrapGrid : mainGrid);
