@@ -17,6 +17,8 @@ type DrawingOptions = {
   getTileHeight: () => number;
   isCellActive: (x: number, y: number) => boolean;
   setCellActive: (x: number, y: number, active: boolean) => void;
+  /** Used by Line/Circle/Shape only (so they can mirror); Fill/Shade keep using setCellActive. */
+  setDrawCellActive?: (x: number, y: number, active: boolean) => void;
 };
 
 function isInSelection(x: number, y: number, selection: Set<string> | undefined): boolean {
@@ -25,10 +27,10 @@ function isInSelection(x: number, y: number, selection: Set<string> | undefined)
 }
 
 export function createDrawingTools(options: DrawingOptions): DrawingTools {
-  const { getTileWidth, getTileHeight, isCellActive, setCellActive } = options;
+  const { getTileWidth, getTileHeight, isCellActive, setCellActive, setDrawCellActive } = options;
 
   // Allow intercepting setIfAllowed for previews
-  let currentSetCellActive = setCellActive;
+  let currentSetCellActive = setDrawCellActive ?? setCellActive;
 
   function setIfAllowed(x: number, y: number, active: boolean, selection: Set<string> | undefined) {
     if (!isInSelection(x, y, selection)) return;

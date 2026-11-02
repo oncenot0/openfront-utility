@@ -1,3 +1,5 @@
+import { isEditableTarget, isOverlayOpen } from "./inputGuards.js";
+
 type KeyboardShortcutOptions = {
   onUndo: () => void;
   onRedo: () => void;
@@ -10,18 +12,7 @@ type KeyboardShortcutOptions = {
   onInvertSelection: () => void;
 };
 
-const isEditableTarget = (target: EventTarget | null) => {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  const t = target.tagName.toLowerCase();
-  return t === "input" || t === "textarea" || t === "select";
-};
 
-// While a modal/overlay is open, canvas shortcuts must not act on the pattern
-// hidden behind it (e.g. Backspace clearing the selection).
-const isOverlayOpen = () =>
-  document.body.classList.contains("image-import-open") ||
-  document.querySelector("#infoModal:not([hidden])") !== null;
 
 // Leave the browser's normal copy alone when the user has selected page text.
 const hasTextSelection = () => (window.getSelection()?.toString() ?? "") !== "";

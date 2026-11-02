@@ -20,6 +20,12 @@ import { createPatternLoader } from "./app/patternLoader.js";
 import { initPaneResizeControls } from "./app/paneResizeControls.js";
 import { createPreviewRenderer } from "./app/previewRenderer.js";
 import { createToolState } from "./app/toolState.js";
+import { createToolOptions } from "./app/toolOptions.js";
+import { createMirrorState } from "./app/mirror.js";
+import { createMirrorControls } from "./app/mirrorControls.js";
+import { createCheatSheet } from "./app/cheatSheet.js";
+import { setupToolShortcuts } from "./app/toolShortcuts.js";
+import { setupTooltips } from "./app/tooltips.js";
 import { createHistoryManager } from "./app/undoRedo.js";
 import { initWorkspaceControls } from "./app/workspaceControls.js";
 import { initThemeToggle } from "./app/themeToggle.js";
@@ -215,6 +221,10 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const toolState = createToolState({ toolButtons, sizeSlider, sizeOutput, sizeGroup });
+  const toolOptions = createToolOptions(toolState);
+  // Each canvas keeps its own mirror lines; the Mirror buttons toggle both.
+  const mainMirror = createMirrorState();
+  const scrapMirror = createMirrorState();
   const shapeTypeSelect = document.getElementById("shapeType") as HTMLSelectElement;
   if (shapeTypeSelect) {
     shapeTypeSelect.addEventListener("change", () => {
@@ -242,6 +252,8 @@ document.addEventListener("DOMContentLoaded", () => {
     onPatternChange: () => { if (!isScrapActive) updateOutput(); },
     onStrokeStart: () => mainHistory.beginBatch(),
     onStrokeEnd: () => { mainHistory.endBatch(); updateHistoryButtons(); },
+    mirror: mainMirror,
+    toolOptions,
   });
 
   const mainDrawingTools = createDrawingTools({
@@ -249,6 +261,7 @@ document.addEventListener("DOMContentLoaded", () => {
     getTileHeight: mainGrid.getTileHeight,
     isCellActive: mainGrid.isCellActive,
     setCellActive: mainGrid.setCellActive,
+    setDrawCellActive: mainGrid.setCellMirrored,
   });
   mainGrid.setDrawingTools(mainDrawingTools);
   handleGuideChange = () => {
@@ -276,6 +289,8 @@ document.addEventListener("DOMContentLoaded", () => {
     onPatternChange: () => { if (isScrapActive) updateOutput(); },
     onStrokeStart: () => scrapHistory.beginBatch(),
     onStrokeEnd: () => { scrapHistory.endBatch(); updateHistoryButtons(); },
+    mirror: scrapMirror,
+    toolOptions,
   });
 
   const scrapDrawingTools = createDrawingTools({
@@ -283,8 +298,22 @@ document.addEventListener("DOMContentLoaded", () => {
     getTileHeight: scrapGrid.getTileHeight,
     isCellActive: scrapGrid.isCellActive,
     setCellActive: scrapGrid.setCellActive,
+    setDrawCellActive: scrapGrid.setCellMirrored,
   });
   scrapGrid.setDrawingTools(scrapDrawingTools);
+
+  // ── Mirror lines, shortcuts, tooltips ─────────────────────────────────────
+  const mirrorControls = createMirrorControls({
+    xButton: document.getElementById("mirrorXBtn") as HTMLButtonElement,
+    yButton: document.getElementById("mirrorYBtn") as HTMLButtonElement,
+    grids: [
+      { gridDiv, state: mainMirror, getWidth: mainGrid.getTileWidth, getHeight: mainGrid.getTileHeight },
+      { gridDiv: scrapGridDiv, state: scrapMirror, getWidth: scrapGrid.getTileWidth, getHeight: scrapGrid.getTileHeight },
+    ],
+  });
+  const cheatSheet = createCheatSheet(document.getElementById("shortcutsBtn"));
+  setupToolShortcuts({ toolState, mirror: mirrorControls, cheatSheet });
+  setupTooltips();
 
   // Helper — active grid
   const activeGrid = () => (isScrapActive ? scrapGrid : mainGrid);

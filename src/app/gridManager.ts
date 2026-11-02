@@ -1,4 +1,12 @@
 import { brushExtent, lineCells } from "./lineGeometry.js";
+import { mirroredPoints, type MirrorState } from "./mirror.js";
+import {
+  computeGradientPattern,
+  ditherBrushAction,
+  ditherPatternOn,
+  regionBounds,
+} from "./ditherTools.js";
+import type { ToolOptions } from "./toolOptions.js";
 import { getCircleCells, type GridPoint } from "./circleGeometry.js";
 import type { ClipboardManager } from "./clipboard.js";
 import type { DrawingTools } from "./drawingTools.js";
@@ -28,6 +36,8 @@ export type GridManager = {
   getTileHeight: () => number;
   isCellActive: (x: number, y: number) => boolean;
   setCellActive: (x: number, y: number, active: boolean) => void;
+  /** Like setCellActive, but also paints the mirror images when Mirror X/Y is on. */
+  setCellMirrored: (x: number, y: number, active: boolean) => void;
   setDrawingTools: (tools: DrawingTools) => void;
   /** Returns the active selection (shared reference — read-only externally) */
   getActiveSelection: () => Set<string>;
@@ -71,6 +81,10 @@ type GridManagerOptions = {
   /** Called when a pencil stroke starts / ends so history can group it as one undo step. */
   onStrokeStart?: () => void;
   onStrokeEnd?: () => void;
+  /** Symmetry settings shared with the mirror controls. */
+  mirror?: MirrorState;
+  /** Dither Brush / Gradient settings. */
+  toolOptions?: ToolOptions;
 };
 
 // ─── Implementation ───────────────────────────────────────────────────────────
@@ -92,6 +106,8 @@ export function createGridManager(options: GridManagerOptions): GridManager {
     onPatternChange,
     onStrokeStart,
     onStrokeEnd,
+    mirror,
+    toolOptions,
   } = options;
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -105,6 +121,9 @@ export function createGridManager(options: GridManagerOptions): GridManager {
   let strokeActive = false;
   let lastPencilCell: GridPoint | null = null;
   let pencilPaintedOnMouseDown = false;
+  // Gradient tool: a drag from lineStart to gradientEnd.
+  let gradientDragging = false;
+  let gradientEnd: GridPoint | null = null;
   let currentHeight = 0;
   let currentWidth = 0;
   let patternState: number[][] = [];
@@ -344,6 +363,19 @@ export function createGridManager(options: GridManagerOptions): GridManager {
     onStrokeEnd?.();
   };
 
+  // Paint a cell and, when Mirror X/Y is on, its reflections. Reflections obey
+  // the active selection just like the cell the user actually touched.
+  const setCellMirrored = (x: number, y: number, active: boolean) => {
+    if (!mirror || (!mirror.x && !mirror.y)) {
+      setCellActive(x, y, active);
+      return;
+    }
+    for (const [mx, my] of mirroredPoints(x, y, mirror, tileWidth, tileHeight)) {
+      if (activeSelection.size > 0 && !activeSelection.has(key(mx, my))) continue;
+      setCellActive(mx, my, active);
+    }
+  };
+
   // ── Pencil brush ──────────────────────────────────────────────────────────
   const applyPencilBrush = (cx: number, cy: number, activate: boolean) => {
     const size = toolState.getPencilSize();
@@ -354,9 +386,73 @@ export function createGridManager(options: GridManagerOptions): GridManager {
       for (let bx = cx - before; bx <= cx + after; bx++) {
         if (!isInBounds(bx, by)) continue;
         if (sel && !sel.has(key(bx, by))) continue;
-        setCellActive(bx, by, activate);
+        setCellMirrored(bx, by, activate);
       }
     }
+  };
+
+  // ── Dither brush ──────────────────────────────────────────────────────────
+  // Paints a dot pattern anchored to the grid. In "add" mode it only ever turns
+  // cells on, so pixels that are already there are left alone.
+  const applyDitherBrush = (cx: number, cy: number) => {
+    const size = toolState.getDitherSize();
+    const { before, after } = brushExtent(size);
+    const density = toolOptions?.getDitherDensity() ?? 50;
+    const mode = toolOptions?.getDitherMode() ?? "add";
+    const sel = activeSelection.size > 0 ? activeSelection : undefined;
+    for (let by = cy - before; by <= cy + after; by++) {
+      for (let bx = cx - before; bx <= cx + after; bx++) {
+        if (!isInBounds(bx, by)) continue;
+        if (sel && !sel.has(key(bx, by))) continue;
+        const action = ditherBrushAction(ditherPatternOn(bx, by, density), mode);
+        if (action === null) continue;
+        setCellMirrored(bx, by, action);
+      }
+    }
+  };
+
+  const paintBrush = (tool: string, cx: number, cy: number) => {
+    if (tool === "ditherBrush") applyDitherBrush(cx, cy);
+    else applyPencilBrush(cx, cy, penToggleState ?? true);
+  };
+
+  // ── Gradient fill ─────────────────────────────────────────────────────────
+  const commitGradient = () => {
+    const start = lineStart;
+    const end = gradientEnd;
+    gradientDragging = false;
+    gradientEnd = null;
+    setLineStart(null); // also clears the drag preview line
+    if (!start || !toolOptions) return;
+    const region = activeSelection.size > 0 ? activeSelection : null;
+    let from: GridPoint = start;
+    let to: GridPoint = end ?? start;
+    if (from.x === to.x && from.y === to.y) {
+      // A plain click: fade from the top of the area to the bottom.
+      const b = regionBounds(region, tileWidth, tileHeight);
+      const midX = Math.round((b.minX + b.maxX) / 2);
+      from = { x: midX, y: b.minY };
+      to = { x: midX, y: b.maxY };
+    }
+    const result = computeGradientPattern({
+      width: tileWidth,
+      height: tileHeight,
+      from,
+      to,
+      region,
+      style: toolOptions.getGradientStyle(),
+      reverse: toolOptions.getGradientReverse(),
+    });
+    const keepExisting = toolOptions.getGradientMode() === "add";
+    for (let y = 0; y < tileHeight; y++) {
+      for (let x = 0; x < tileWidth; x++) {
+        if (region && !region.has(key(x, y))) continue;
+        const on = result[y][x] === 1;
+        if (keepExisting && !on) continue;
+        setCellActive(x, y, on);
+      }
+    }
+    onPatternChange();
   };
 
   // ── Paste commit ──────────────────────────────────────────────────────────
@@ -525,6 +621,7 @@ export function createGridManager(options: GridManagerOptions): GridManager {
     isMouseDown = false;
     penToggleState = null;
     endStroke();
+    if (gradientDragging) commitGradient();
     // Commit Select Area drag regardless of current tool if we started one
     if (selectAreaStart && selectAreaEnd) {
       const rect = buildRectSet(selectAreaStart, selectAreaEnd);
@@ -546,6 +643,11 @@ export function createGridManager(options: GridManagerOptions): GridManager {
     isMouseDown = false;
     penToggleState = null;
     endStroke();
+    if (gradientDragging) {
+      gradientDragging = false;
+      gradientEnd = null;
+      setLineStart(null);
+    }
     if (isShiftDown) releaseShift();
   });
 
@@ -785,13 +887,20 @@ export function createGridManager(options: GridManagerOptions): GridManager {
 
           // Paint the cell the stroke starts on, and decide whether this
           // stroke draws or erases from that cell's state.
-          if (tool === "pencil" && e.button === 0) {
+          if ((tool === "pencil" || tool === "ditherBrush") && e.button === 0) {
             beginStroke();
-            penToggleState = !isCellActive(cx, cy);
-            applyPencilBrush(cx, cy, penToggleState);
+            if (tool === "pencil") penToggleState = !isCellActive(cx, cy);
+            paintBrush(tool, cx, cy);
             lastPencilCell = { x: cx, y: cy };
             pencilPaintedOnMouseDown = true;
             onPatternChange();
+            return;
+          }
+
+          if (tool === "gradient" && e.button === 0) {
+            gradientDragging = true;
+            gradientEnd = { x: cx, y: cy };
+            setLineStart({ x: cx, y: cy });
             return;
           }
 
@@ -825,6 +934,13 @@ export function createGridManager(options: GridManagerOptions): GridManager {
             }
             const shouldActivate = !isCellActive(cx, cy);
             applyPencilBrush(cx, cy, shouldActivate);
+            onPatternChange();
+          } else if (tool === "ditherBrush") {
+            if (pencilPaintedOnMouseDown) {
+              pencilPaintedOnMouseDown = false;
+              return;
+            }
+            applyDitherBrush(cx, cy);
             onPatternChange();
           } else if (tool === "line") {
             if (!lineStart) {
@@ -873,13 +989,19 @@ export function createGridManager(options: GridManagerOptions): GridManager {
             return;
           }
 
-          if (isMouseDown && tool === "pencil") {
+          if (tool === "gradient" && gradientDragging && isMouseDown) {
+            gradientEnd = { x: cx, y: cy };
+            previewLine(cx, cy);
+            return;
+          }
+
+          if (isMouseDown && (tool === "pencil" || tool === "ditherBrush")) {
             beginStroke();
-            if (penToggleState === null) penToggleState = !isCellActive(cx, cy);
+            if (tool === "pencil" && penToggleState === null) penToggleState = !isCellActive(cx, cy);
             // Join the previous cell to this one so fast drags leave no gaps.
             const from = lastPencilCell ?? { x: cx, y: cy };
             for (const [lx, ly] of lineCells(from.x, from.y, cx, cy)) {
-              applyPencilBrush(lx, ly, penToggleState);
+              paintBrush(tool, lx, ly);
             }
             lastPencilCell = { x: cx, y: cy };
             onPatternChange();
@@ -989,6 +1111,7 @@ export function createGridManager(options: GridManagerOptions): GridManager {
     isCellActive,
     setCellActive,
     setDrawingTools,
+    setCellMirrored,
     getActiveSelection: () => activeSelection,
     clearSelection,
     hasSelection,
