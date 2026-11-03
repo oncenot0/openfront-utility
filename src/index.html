@@ -119,6 +119,11 @@
               <span class="tool-icon">⇅</span>
               <span class="tool-label">Mirror Y</span>
             </button>
+            <!-- Appears only while a mirror line is on -->
+            <button id="mirrorCenterBtn" class="tool-btn action-btn mirror-btn" type="button" hidden title="Center mirror — snap the mirror line(s) back to the middle of the canvas">
+              <span class="tool-icon">⌖</span>
+              <span class="tool-label">Center</span>
+            </button>
           </div>
 
           <div class="tool-strip-separator"></div>
@@ -324,6 +329,24 @@
                 <div class="size-slider-wrap">
                   <div id="toolSizeSlider" class="size-slider"></div>
                 </div>
+              </div>
+            </div>
+
+            <!-- Appears only while something is selected: move, rotate, flip -->
+            <div id="selectionActions" class="selection-actions" role="toolbar" aria-label="Selection actions" hidden>
+              <div class="sel-group" role="group" aria-label="Move selection">
+                <button type="button" class="sel-btn" data-sel="shift-left" title="Move left">←</button>
+                <button type="button" class="sel-btn" data-sel="shift-up" title="Move up">↑</button>
+                <button type="button" class="sel-btn" data-sel="shift-down" title="Move down">↓</button>
+                <button type="button" class="sel-btn" data-sel="shift-right" title="Move right">→</button>
+              </div>
+              <div class="sel-group" role="group" aria-label="Rotate selection">
+                <button type="button" class="sel-btn" data-sel="rotate-left" title="Rotate left">↺</button>
+                <button type="button" class="sel-btn" data-sel="rotate-right" title="Rotate right">↻</button>
+              </div>
+              <div class="sel-group" role="group" aria-label="Flip selection">
+                <button type="button" class="sel-btn" data-sel="flip-h" title="Flip X (mirror left/right)">⇋</button>
+                <button type="button" class="sel-btn" data-sel="flip-v" title="Flip Y (mirror top/bottom)">⇅</button>
               </div>
             </div>
 

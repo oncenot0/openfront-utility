@@ -307,6 +307,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const mirrorControls = createMirrorControls({
     xButton: document.getElementById("mirrorXBtn") as HTMLButtonElement,
     yButton: document.getElementById("mirrorYBtn") as HTMLButtonElement,
+    centerButton: document.getElementById("mirrorCenterBtn") as HTMLButtonElement,
     grids: [
       { gridDiv, state: mainMirror, getWidth: mainGrid.getTileWidth, getHeight: mainGrid.getTileHeight },
       { gridDiv: scrapGridDiv, state: scrapMirror, getWidth: scrapGrid.getTileWidth, getHeight: scrapGrid.getTileHeight },
@@ -608,11 +609,31 @@ document.addEventListener("DOMContentLoaded", () => {
     toolState.restoreTool();
   });
 
+  // On-canvas move / rotate / flip buttons: only shown while something is selected.
+  const selectionActions = document.getElementById("selectionActions") as HTMLElement | null;
+  const selectionActionHandlers: Record<string, () => void> = {
+    "shift-left": () => activeGrid().shiftDir(-1, 0),
+    "shift-right": () => activeGrid().shiftDir(1, 0),
+    "shift-up": () => activeGrid().shiftDir(0, -1),
+    "shift-down": () => activeGrid().shiftDir(0, 1),
+    "rotate-left": () => activeGrid().rotateDir("left"),
+    "rotate-right": () => activeGrid().rotateDir("right"),
+    "flip-h": () => activeGrid().flipDir("h"),
+    "flip-v": () => activeGrid().flipDir("v"),
+  };
+  selectionActions?.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-sel]");
+    if (btn) selectionActionHandlers[btn.dataset.sel ?? ""]?.();
+  });
+  // Keep clicks on the bar from starting a stroke / selection on the canvas below.
+  selectionActions?.addEventListener("mousedown", (e) => e.stopPropagation());
+
   // Enable/disable transform buttons based on selection
   const updateTransformButtons = () => {
     const hasSel = activeGrid().hasSelection();
     [shiftUpBtn, shiftDownBtn, shiftLeftBtn, shiftRightBtn, rotateLeftBtn, rotateRightBtn, flipHBtn, flipVBtn, deselectBtn]
       .forEach((btn) => (btn.disabled = !hasSel));
+    if (selectionActions) selectionActions.hidden = !hasSel;
   };
   // Poll selection state (simple approach — could be event-driven)
   setInterval(updateTransformButtons, 200);

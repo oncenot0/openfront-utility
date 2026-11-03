@@ -1,4 +1,4 @@
-import { brushExtent, lineCells } from "./lineGeometry.js";
+import { brushExtent, lineCells, thickLineCells } from "./lineGeometry.js";
 import { mirroredPoints, type MirrorState } from "./mirror.js";
 import {
   computeGradientPattern,
@@ -7,7 +7,7 @@ import {
   regionBounds,
 } from "./ditherTools.js";
 import type { ToolOptions } from "./toolOptions.js";
-import { getCircleCells, type GridPoint } from "./circleGeometry.js";
+import { getCircleCellsByDiameter, type GridPoint } from "./circleGeometry.js";
 import type { ClipboardManager } from "./clipboard.js";
 import type { DrawingTools } from "./drawingTools.js";
 import type { GuideState } from "./gridGuides.js";
@@ -121,6 +121,23 @@ export function createGridManager(options: GridManagerOptions): GridManager {
   let strokeActive = false;
   let lastPencilCell: GridPoint | null = null;
   let pencilPaintedOnMouseDown = false;
+  // While dragging, every cell the mouse crosses used to re-encode the whole
+  // pattern and redraw the preview. Now those updates are merged into at most
+  // one per animation frame (and always flushed when the stroke ends).
+  let changeFrame = 0;
+  const flushPatternChange = () => {
+    if (!changeFrame) return;
+    cancelAnimationFrame(changeFrame);
+    changeFrame = 0;
+    onPatternChange();
+  };
+  const schedulePatternChange = () => {
+    if (changeFrame) return;
+    changeFrame = requestAnimationFrame(() => {
+      changeFrame = 0;
+      onPatternChange();
+    });
+  };
   // Gradient tool: a drag from lineStart to gradientEnd.
   let gradientDragging = false;
   let gradientEnd: GridPoint | null = null;
@@ -173,8 +190,15 @@ export function createGridManager(options: GridManagerOptions): GridManager {
 
   const setCellActive = (x: number, y: number, active: boolean) => {
     if (!isInBounds(x, y)) return;
-    patternState[y][x] = active ? 1 : 0;
-    cellMatrix[y]?.[x]?.classList.toggle("active", active);
+    const next = active ? 1 : 0;
+    const cell = cellMatrix[y]?.[x];
+    // Brush stamps overlap heavily while dragging; skip cells that already
+    // have the right value so we don't redo DOM writes for them. The DOM is
+    // checked too, because transforms replace `patternState` wholesale and
+    // then call this to bring the cells' classes in line with it.
+    if (patternState[y][x] === next && (!cell || cell.classList.contains("active") === active)) return;
+    patternState[y][x] = next;
+    cell?.classList.toggle("active", active);
   };
 
   const isCellActive = (x: number, y: number) =>
@@ -190,20 +214,35 @@ export function createGridManager(options: GridManagerOptions): GridManager {
     });
   };
 
+  // What is currently painted, so a redraw only touches cells that changed
+  // (dragging a select box used to repaint every cell on every mouse move).
+  let paintedSelection = new Set<string>();
+  let paintedPreview = new Set<string>();
+  const cellAt = (k: string) => {
+    const [x, y] = k.split(",").map(Number);
+    return cellMatrix[y]?.[x];
+  };
   const renderSelection = () => {
-    // Clear all selection classes first then re-apply current selection
-    for (let y = 0; y < tileHeight; y++) {
-      for (let x = 0; x < tileWidth; x++) {
-        cellMatrix[y]?.[x]?.classList.remove("selection-cell", "select-area-preview");
-      }
-    }
-    applySelectionClass(activeSelection, true);
-    // show area preview
-    selectAreaPreview.forEach((k) => {
-      const [x, y] = k.split(",").map(Number);
-      cellMatrix[y]?.[x]?.classList.add("select-area-preview");
+    paintedSelection.forEach((k) => {
+      if (!activeSelection.has(k)) cellAt(k)?.classList.remove("selection-cell");
     });
+    activeSelection.forEach((k) => {
+      if (!paintedSelection.has(k)) cellAt(k)?.classList.add("selection-cell");
+    });
+    paintedPreview.forEach((k) => {
+      if (!selectAreaPreview.has(k)) cellAt(k)?.classList.remove("select-area-preview");
+    });
+    selectAreaPreview.forEach((k) => {
+      if (!paintedPreview.has(k)) cellAt(k)?.classList.add("select-area-preview");
+    });
+    paintedSelection = new Set(activeSelection);
+    paintedPreview = new Set(selectAreaPreview);
     gridDiv.classList.toggle("selection-active", activeSelection.size > 0);
+  };
+  // Rebuilding the grid resets every cell's classes.
+  const forgetPaintedSelection = () => {
+    paintedSelection = new Set();
+    paintedPreview = new Set();
   };
 
   const clearSelection = () => {
@@ -239,14 +278,9 @@ export function createGridManager(options: GridManagerOptions): GridManager {
     circlePreviewCells = [];
   };
 
-  const previewCircle = (center: GridPoint, radius: number) => {
+  const previewCircle = (center: GridPoint, diameter: number) => {
     clearCirclePreview();
-    circlePreviewCells =
-      radius === 0
-        ? isInBounds(center.x, center.y)
-          ? [center]
-          : []
-        : getCircleCells(center, Math.max(0, radius), false, tileWidth, tileHeight);
+    circlePreviewCells = getCircleCellsByDiameter(center, diameter, false, tileWidth, tileHeight);
     circlePreviewCells.forEach((p) =>
       cellMatrix[p.y]?.[p.x]?.classList.add("circle-hover")
     );
@@ -294,26 +328,18 @@ export function createGridManager(options: GridManagerOptions): GridManager {
     if (pt) cellMatrix[pt.y]?.[pt.x]?.classList.add("line-start");
   };
 
-  const previewLine = (x1: number, y1: number) => {
+  const previewLine = (x1: number, y1: number, thickness = 1) => {
     clearLinePreview();
     if (!lineStart) return;
-    if (lineStart) cellMatrix[lineStart.y]?.[lineStart.x]?.classList.add("line-start");
-    // Bresenham
-    let x0 = lineStart.x, y0 = lineStart.y;
-    let dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-    let dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-    let err = dx + dy, e2;
+    cellMatrix[lineStart.y]?.[lineStart.x]?.classList.add("line-start");
     const pts: GridPoint[] = [];
-    while (true) {
-      if (isInBounds(x0, y0)) pts.push({ x: x0, y: y0 });
-      if (x0 === x1 && y0 === y1) break;
-      e2 = 2 * err;
-      if (e2 >= dy) { err += dy; x0 += sx; }
-      if (e2 <= dx) { err += dx; y0 += sy; }
+    for (const [x, y] of thickLineCells(lineStart.x, lineStart.y, x1, y1, thickness)) {
+      if (isInBounds(x, y)) pts.push({ x, y });
     }
     linePreviews = pts;
+    // The start cell keeps its own "line-start" look when the line is 1 thick.
     linePreviews.forEach((p) => {
-      if (p.x === lineStart!.x && p.y === lineStart!.y) return;
+      if (thickness === 1 && p.x === lineStart!.x && p.y === lineStart!.y) return;
       cellMatrix[p.y]?.[p.x]?.classList.add("line-hover");
     });
   };
@@ -358,6 +384,8 @@ export function createGridManager(options: GridManagerOptions): GridManager {
   };
   const endStroke = () => {
     lastPencilCell = null;
+    // Push out the last drawn cells before the stroke is committed to history.
+    flushPatternChange();
     if (!strokeActive) return;
     strokeActive = false;
     onStrokeEnd?.();
@@ -893,7 +921,7 @@ export function createGridManager(options: GridManagerOptions): GridManager {
             paintBrush(tool, cx, cy);
             lastPencilCell = { x: cx, y: cy };
             pencilPaintedOnMouseDown = true;
-            onPatternChange();
+            schedulePatternChange();
             return;
           }
 
@@ -947,7 +975,7 @@ export function createGridManager(options: GridManagerOptions): GridManager {
               setLineStart({ x: cx, y: cy });
               return;
             }
-            drawingTools?.drawLine(lineStart.x, lineStart.y, cx, cy, sel);
+            drawingTools?.drawLine(lineStart.x, lineStart.y, cx, cy, sel, toolState.getLineThickness());
             setLineStart(null);
             onPatternChange();
           } else if (tool === "fill") {
@@ -969,7 +997,7 @@ export function createGridManager(options: GridManagerOptions): GridManager {
             clearStarPreview(); // using same dim overlay for shape if added later
             onPatternChange();
           } else if (tool === "circle") {
-            drawingTools?.drawCircle(cx, cy, toolState.getCircleRadius(), sel);
+            drawingTools?.drawCircle(cx, cy, toolState.getCircleDiameter(), sel);
             clearCirclePreview();
             onPatternChange();
           } else if (tool === "paste") {
@@ -1004,12 +1032,12 @@ export function createGridManager(options: GridManagerOptions): GridManager {
               paintBrush(tool, lx, ly);
             }
             lastPencilCell = { x: cx, y: cy };
-            onPatternChange();
+            schedulePatternChange();
             return;
           }
 
           if (!isMouseDown && tool === "circle") {
-            previewCircle({ x: cx, y: cy }, toolState.getCircleRadius());
+            previewCircle({ x: cx, y: cy }, toolState.getCircleDiameter());
             return;
           }
 
@@ -1019,7 +1047,7 @@ export function createGridManager(options: GridManagerOptions): GridManager {
           }
 
           if (tool === "line" && lineStart) {
-            previewLine(cx, cy);
+            previewLine(cx, cy, toolState.getLineThickness());
             return;
           }
 
@@ -1032,6 +1060,9 @@ export function createGridManager(options: GridManagerOptions): GridManager {
     }
 
     cellMatrix = nextMatrix;
+    // Cells were rebuilt with fresh classes, so repaint any selection from scratch.
+    forgetPaintedSelection();
+    renderSelection();
     renderRulers();
     onPatternChange();
   }

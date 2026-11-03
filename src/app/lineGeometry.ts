@@ -40,3 +40,38 @@ export function brushExtent(size: number): { before: number; after: number } {
   const n = Math.max(1, Math.floor(size));
   return { before: Math.floor((n - 1) / 2), after: Math.floor(n / 2) };
 }
+
+/**
+ * Cells covered by a line of the given thickness: the 1-cell Bresenham line
+ * with a `thickness` x `thickness` square brush stamped on every cell (the same
+ * footprint rule as the pencil, see brushExtent). De-duplicated, in no
+ * particular order. Thickness 1 is exactly `lineCells`.
+ */
+export function thickLineCells(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  thickness: number,
+): Array<[number, number]> {
+  const base = lineCells(x0, y0, x1, y1);
+  const n = Math.max(1, Math.floor(thickness));
+  if (n === 1) return base;
+  const { before, after } = brushExtent(n);
+  const seen = new Set<number>();
+  const out: Array<[number, number]> = [];
+  // Numeric key (offset keeps negatives unique) is much cheaper than strings
+  // for big brushes on long lines.
+  const K = 1 << 15;
+  for (const [cx, cy] of base) {
+    for (let y = cy - before; y <= cy + after; y++) {
+      for (let x = cx - before; x <= cx + after; x++) {
+        const k = (y + K) * (K * 2) + (x + K);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push([x, y]);
+      }
+    }
+  }
+  return out;
+}

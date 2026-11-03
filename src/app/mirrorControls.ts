@@ -16,6 +16,8 @@ type MirroredGrid = {
 export type MirrorControls = {
   toggleX: () => void;
   toggleY: () => void;
+  /** Snap every mirror line back to the middle of its canvas. */
+  center: () => void;
   /** Reposition the lines (call after the grid size or zoom changes). */
   refresh: () => void;
 };
@@ -27,9 +29,11 @@ export type MirrorControls = {
 export function createMirrorControls(options: {
   xButton: HTMLButtonElement;
   yButton: HTMLButtonElement;
+  /** Optional "Center" button; only shown while a mirror line is on. */
+  centerButton?: HTMLButtonElement;
   grids: MirroredGrid[];
 }): MirrorControls {
-  const { xButton, yButton, grids } = options;
+  const { xButton, yButton, centerButton, grids } = options;
 
   type Axis = { line: HTMLElement; grip: HTMLElement };
   const makeAxis = (kind: "v" | "h", label: string): Axis => {
@@ -100,6 +104,22 @@ export function createMirrorControls(options: {
     yButton.classList.toggle("selected", anyY);
     xButton.setAttribute("aria-pressed", String(anyX));
     yButton.setAttribute("aria-pressed", String(anyY));
+    if (centerButton) {
+      centerButton.hidden = !(anyX || anyY);
+      // Nothing to do when every line is already in the middle.
+      const offCentre = grids.some(
+        (g) => (g.state.x && g.state.axisX2 !== null) || (g.state.y && g.state.axisY2 !== null),
+      );
+      centerButton.disabled = !offCentre;
+    }
+  };
+
+  const center = () => {
+    for (const g of grids) {
+      g.state.axisX2 = null;
+      g.state.axisY2 = null;
+    }
+    render();
   };
 
   const setAxis = (grid: MirroredGrid, axis: "x" | "y", axis2: number) => {
@@ -176,7 +196,8 @@ export function createMirrorControls(options: {
   };
   xButton.addEventListener("click", () => toggle("x"));
   yButton.addEventListener("click", () => toggle("y"));
+  centerButton?.addEventListener("click", center);
   render();
 
-  return { toggleX: () => toggle("x"), toggleY: () => toggle("y"), refresh: render };
+  return { toggleX: () => toggle("x"), toggleY: () => toggle("y"), center, refresh: render };
 }

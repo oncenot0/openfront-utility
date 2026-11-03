@@ -2,6 +2,15 @@
 
 *Note: some changes may be undocumented prior to September 2026 because I didn't keep track ¯\_(ツ)_/¯*
 
+## November 3, 2026 — Bigger Brushes, Thick Lines & Selection Buttons
+- **Smoother dragging and dithering** — drawing no longer re-encodes the pattern and redraws the preview for every single cell the mouse crosses; updates are merged to once per frame, brush stamps skip cells that already have the right value, and dragging a select box only repaints the cells that changed.
+- **Center button for Mirror** — a **Center** button appears next to Mirror X / Y while a mirror line is on and snaps the line(s) back to the middle of the canvas in one click (double-clicking a handle still works too).
+- **Circle tool** — size now goes up to **128** (was 30) and is the circle's true **diameter**, so a size of 7 is exactly 7 cells wide. Even sizes work properly (they used to match the odd size below them), and the outline is a clean, symmetric ring at every size.
+- **Pencil** — size now goes up to **64** (was 9).
+- **Line tool thickness** — the line tool now has a size slider (1–32) and the preview shows the thick line before you place it.
+- **Selection buttons** — while something is selected, a bar appears at the bottom of the canvas with **move**, **rotate** and **flip X / flip Y** buttons (the toolbar buttons still work too).
+- Size slider labels are thinned out on wide ranges so the numbers stay readable.
+
 ## August 16, 2026 — Update Links
 - The **Links** now reference the new artist dashboard and links related to the old system have been removed.
 

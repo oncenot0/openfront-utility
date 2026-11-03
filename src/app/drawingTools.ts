@@ -1,8 +1,11 @@
-import { getCircleCells } from "./circleGeometry.js";
+import { getCircleCellsByDiameter } from "./circleGeometry.js";
+import { thickLineCells } from "./lineGeometry.js";
 
 export type DrawingTools = {
-  drawLine: (x0: number, y0: number, x1: number, y1: number, selection?: Set<string>) => void;
-  drawCircle: (cx: number, cy: number, r: number, selection?: Set<string>) => void;
+  /** `thickness` is the brush size in cells (default 1). */
+  drawLine: (x0: number, y0: number, x1: number, y1: number, selection?: Set<string>, thickness?: number) => void;
+  /** `diameter` is the circle's width/height in cells. */
+  drawCircle: (cx: number, cy: number, diameter: number, selection?: Set<string>) => void;
   drawShape: (type: string, cx: number, cy: number, r: number, selection?: Set<string>) => void;
   floodFill: (sx: number, sy: number, selection?: Set<string>) => void;
   floodShade: (sx: number, sy: number, selection?: Set<string>) => void;
@@ -37,32 +40,21 @@ export function createDrawingTools(options: DrawingOptions): DrawingTools {
     currentSetCellActive(x, y, active);
   }
 
-  /** Bresenham line, respects selection constraint */
-  function drawLine(x0: number, y0: number, x1: number, y1: number, selection?: Set<string>) {
-    let dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-    let dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-    let err = dx + dy, e2;
-    while (true) {
-      setIfAllowed(x0, y0, true, selection);
-      if (x0 === x1 && y0 === y1) break;
-      e2 = 2 * err;
-      if (e2 >= dy) { err += dy; x0 += sx; }
-      if (e2 <= dx) { err += dx; y0 += sy; }
+  /** Bresenham line (optionally thick), respects selection constraint */
+  function drawLine(x0: number, y0: number, x1: number, y1: number, selection?: Set<string>, thickness = 1) {
+    const width = getTileWidth();
+    const height = getTileHeight();
+    for (const [x, y] of thickLineCells(x0, y0, x1, y1, thickness)) {
+      // Thick brushes can overshoot the canvas; thin lines keep their old
+      // behaviour (callers/mirroring clip them).
+      if (thickness > 1 && (x < 0 || y < 0 || x >= width || y >= height)) continue;
+      setIfAllowed(x, y, true, selection);
     }
   }
 
-  /** Circle outline only (Bresenham midpoint), respects selection constraint.
-   *  r=0 → single pixel. */
-  function drawCircle(cx: number, cy: number, r: number, selection?: Set<string>) {
-    const width = getTileWidth();
-    const height = getTileHeight();
-    // Always outline only
-    const points = getCircleCells({ x: cx, y: cy }, r, false, width, height);
-    // r=0: just the center pixel
-    if (r === 0) {
-      setIfAllowed(cx, cy, true, selection);
-      return;
-    }
+  /** Circle outline only, `diameter` cells across, respects selection constraint. */
+  function drawCircle(cx: number, cy: number, diameter: number, selection?: Set<string>) {
+    const points = getCircleCellsByDiameter({ x: cx, y: cy }, diameter, false, getTileWidth(), getTileHeight());
     points.forEach((p) => setIfAllowed(p.x, p.y, true, selection));
   }
 

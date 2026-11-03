@@ -22,11 +22,33 @@ export type ToolSizeConfig = {
 };
 
 const TOOL_SIZE_CONFIGS: Partial<Record<ToolKind, ToolSizeConfig>> = {
-  pencil: { min: 1, max: 9, step: 1, defaultValue: 1, label: "Size" },
+  pencil: { min: 1, max: 64, step: 1, defaultValue: 1, label: "Size" },
   ditherBrush: { min: 1, max: 12, step: 1, defaultValue: 4, label: "Size" },
-  circle: { min: 1, max: 30, step: 1, defaultValue: 7, label: "Size" },
+  // Circle size is its diameter in cells; the biggest canvas is 128 wide.
+  circle: { min: 1, max: 128, step: 1, defaultValue: 7, label: "Size" },
   shape: { min: 1, max: 30, step: 1, defaultValue: 5, label: "Size" },
+  // Line size is its thickness in cells.
+  line: { min: 1, max: 32, step: 1, defaultValue: 1, label: "Size" },
 };
+
+/**
+ * Which values get a numbered tick on the slider. A tick per value is fine up
+ * to ~12 values but turns into an unreadable smear on bigger ranges, so wide
+ * ranges only label round numbers (plus the ends).
+ */
+export function sliderPipValues(min: number, max: number, step: number): number[] {
+  const count = Math.floor((max - min) / step) + 1;
+  const all: number[] = [];
+  for (let v = min; v <= max; v += step) all.push(v);
+  if (count <= 12) return all;
+  const nice = [2, 5, 10, 20, 25, 50];
+  const every = nice.find((n) => count / n <= 10) ?? 50;
+  const out = new Set<number>([min, max]);
+  for (const v of all) if (v % every === 0) out.add(v);
+  // Drop a round number that would sit right on top of an end label.
+  const gap = every / 2;
+  return [...out].filter((v) => v === min || v === max || (v - min >= gap && max - v >= gap)).sort((a, b) => a - b);
+}
 
 type ToolStateOptions = {
   toolButtons: NodeListOf<HTMLButtonElement>;
@@ -44,7 +66,10 @@ export type ToolState = {
   adjustSize: (delta: number) => void;
   getShapeRadius: () => number;
   getShapeType: () => string;
-  getCircleRadius: () => number;
+  /** Circle diameter in cells (the slider value). */
+  getCircleDiameter: () => number;
+  /** Line thickness in cells. */
+  getLineThickness: () => number;
   subscribeToToolChanges: (listener: (tool: ToolKind) => void) => () => void;
   /** Returns the current slider value for any sized tool */
   getCurrentSize: () => number;
@@ -94,11 +119,7 @@ export function createToolState(options: ToolStateOptions): ToolState {
     }
     if (sizeGroup) sizeGroup.hidden = false;
     
-    // Generate pip values for all steps in the range
-    const pipValues: number[] = [];
-    for (let v = config.min; v <= config.max; v += config.step) {
-      pipValues.push(v);
-    }
+    const pipValues = sliderPipValues(config.min, config.max, config.step);
     
     // Update noUiSlider range, step, and pips
     slider.updateOptions({
@@ -219,11 +240,17 @@ export function createToolState(options: ToolStateOptions): ToolState {
       return size;
     },
     getShapeType: () => shapeTypeSelect ? shapeTypeSelect.value : "star",
-    getCircleRadius: () => {
+    getCircleDiameter: () => {
       const size = currentTool === "circle"
         ? getSliderValue()
         : (rememberedSizes["circle"] ?? 7);
-      return Math.max(0, Math.floor(size / 2));
+      return Math.max(1, size);
+    },
+    getLineThickness: () => {
+      const size = currentTool === "line"
+        ? getSliderValue()
+        : (rememberedSizes["line"] ?? 1);
+      return Math.max(1, size);
     },
     subscribeToToolChanges: (listener) => {
       listeners.add(listener);

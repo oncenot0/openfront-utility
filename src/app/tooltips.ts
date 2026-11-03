@@ -30,6 +30,7 @@ function tipFor(el: HTMLElement, title: string): Tip {
     return { label: def.label, keys: def.key, description: tip.description ?? (extra ? `Also: hold ${tip.keys}` : null) };
   }
   if (el.id === "mirrorXBtn") return { label: TOGGLE_SHORTCUTS.mirrorX.label, keys: TOGGLE_SHORTCUTS.mirrorX.key, description: "Draw on both sides of a line. Drag the line's handle to move it." };
+  if (el.id === "mirrorCenterBtn") return { label: "Center mirror", keys: null, description: "Snap the mirror line(s) back to the exact middle of the canvas." };
   if (el.id === "mirrorYBtn") return { label: TOGGLE_SHORTCUTS.mirrorY.label, keys: TOGGLE_SHORTCUTS.mirrorY.key, description: "Draw above and below a line. Drag the line's handle to move it." };
   return tip;
 }

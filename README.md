@@ -54,6 +54,9 @@ A fork of [BrayFlex/openfront-utility](https://github.com/BrayFlex/openfront-uti
   - Brush sizes are exactly `size × size`.
   - Shift no longer gets stuck after using Alt-Tab.
 
+- Dragging with the pencil / dither brush no longer lags (pattern updates are batched per frame).
+- Circle: size is the real diameter (1–128); Pencil goes up to 64; Line has a thickness slider (1–32).
+- Mirror has a **Center** button; selections get on-canvas move / rotate / flip buttons.
 - Rotating a selection no longer causes it to drift.
 - Pasting a share link into Import now works.
 - The changelog renderer is hardened.
