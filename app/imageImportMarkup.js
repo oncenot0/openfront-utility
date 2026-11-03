@@ -86,6 +86,7 @@ const overlayMarkup = `
               <option value="brightness">Brightness threshold</option>
               <option value="target-color">Target colour family</option>
               <option value="rgb-rules">RGB channel rules</option>
+              <option value="dither">Dither (keeps shading)</option>
             </select>
 
             <div id="imageImportBrightnessPanel" class="image-mode-panel">
@@ -135,6 +136,42 @@ const overlayMarkup = `
                   class="range-input"
                 />
                 <span id="imageImportTargetToleranceValue" class="image-threshold-value">90</span>
+              </div>
+            </div>
+
+            <div id="imageImportDitherPanel" class="image-mode-panel" hidden>
+              <p class="image-import-meta">
+                Turns shades into patterns of 1s and 0s, so photos and gradients
+                keep their shading instead of becoming solid blobs.
+              </p>
+              <label class="image-setting-label" for="imageImportDitherAlgorithm">
+                Style
+                <select id="imageImportDitherAlgorithm">
+                  <option value="floyd-steinberg">Floyd-Steinberg (smooth, organic)</option>
+                  <option value="atkinson">Atkinson (crisp, higher contrast)</option>
+                  <option value="bayer-4">Ordered 4x4 (regular dot grid)</option>
+                  <option value="bayer-8">Ordered 8x8 (finer gradients)</option>
+                </select>
+              </label>
+              <label class="image-setting-label" for="imageImportDitherPolarity">
+                Which areas become 1
+                <select id="imageImportDitherPolarity">
+                  <option value="light">Light areas</option>
+                  <option value="dark">Dark areas</option>
+                </select>
+              </label>
+              <div class="image-channel-row">
+                <span class="image-channel-name">Density</span>
+                <span class="image-import-meta">Fewer 1s / more 1s</span>
+                <input
+                  type="range"
+                  id="imageImportDitherDensity"
+                  min="0"
+                  max="255"
+                  value="128"
+                  class="range-input"
+                />
+                <span id="imageImportDitherValue" class="image-threshold-value">128</span>
               </div>
             </div>
 
@@ -259,6 +296,11 @@ export function ensureImageImportMarkup() {
         brightnessPanel: mustElement("imageImportBrightnessPanel"),
         targetPanel: mustElement("imageImportTargetPanel"),
         rgbPanel: mustElement("imageImportRgbPanel"),
+        ditherPanel: mustElement("imageImportDitherPanel"),
+        ditherAlgorithm: mustElement("imageImportDitherAlgorithm"),
+        ditherPolarity: mustElement("imageImportDitherPolarity"),
+        ditherDensity: mustElement("imageImportDitherDensity"),
+        ditherValue: mustElement("imageImportDitherValue"),
         widthInput: mustElement("imageImportWidth"),
         heightInput: mustElement("imageImportHeight"),
         sourceCanvas: mustElement("imageImportSourcePreview"),

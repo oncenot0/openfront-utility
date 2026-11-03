@@ -1,0 +1,14 @@
+{
+  "name": "OpenFront Pattern Utility",
+  "short_name": "Pattern Utility",
+  "description": "Design and preview OpenFront.io territory patterns. Works offline.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f0f2f4",
+  "theme_color": "#1080ca",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

@@ -5,9 +5,9 @@ function isInSelection(x, y, selection) {
     return selection.has(`${x},${y}`);
 }
 export function createDrawingTools(options) {
-    const { getTileWidth, getTileHeight, isCellActive, setCellActive } = options;
+    const { getTileWidth, getTileHeight, isCellActive, setCellActive, setDrawCellActive } = options;
     // Allow intercepting setIfAllowed for previews
-    let currentSetCellActive = setCellActive;
+    let currentSetCellActive = setDrawCellActive !== null && setDrawCellActive !== void 0 ? setDrawCellActive : setCellActive;
     function setIfAllowed(x, y, active, selection) {
         if (!isInSelection(x, y, selection))
             return;

@@ -23,31 +23,35 @@ function patternSourceFromMatrix(pattern) {
         scale: 0,
     };
 }
-function hexToRgb(hex) {
+export function hexToRgb(hex) {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result
         ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
         : { r: 255, g: 255, b: 255 };
 }
+/**
+ * Returns the team colour that should replace the primary for a pixel at
+ * (x, y) in a canvas of the given width/height. Sections are radial wedges
+ * from the canvas centre, matching the popover's team-colour wheel.
+ * `teamColors` must already be parsed (see hexToRgb) so this stays cheap to
+ * call once per pixel.
+ */
+export function teamPrimaryFor(teamColors, x, y, width, height) {
+    if (!teamColors || teamColors.length === 0)
+        return null;
+    const dx = x - width / 2;
+    const dy = y - height / 2;
+    // atan2 returns -PI..PI measured from the +x axis; rotate so 0 points up
+    // and sectors progress clockwise, matching the wheel's wedge layout.
+    let angle = Math.atan2(dy, dx) + Math.PI / 2;
+    angle = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    const idx = Math.floor((angle / (Math.PI * 2)) * teamColors.length) % teamColors.length;
+    return teamColors[idx];
+}
 export function createPreviewRenderer(options) {
     const { canvas, context, primaryColorInput, secondaryColorInput, canvasWrap, getZoom, getSimMap, getTeamColors } = options;
-    // Returns the team color that should replace the primary for a pixel at
-    // (x, y) in the canvas of the given width/height. Sections are radial wedges
-    // from the canvas centre, matching the popover's team-color wheel.
-    const teamPrimaryFor = (teamColors, x, y, width, height) => {
-        if (!teamColors || teamColors.length === 0)
-            return null;
-        const dx = x - width / 2;
-        const dy = y - height / 2;
-        // atan2 returns -PI..PI measured from the +x axis; rotate so 0 points up
-        // and sectors progress clockwise, matching the wheel's wedge layout.
-        let angle = Math.atan2(dy, dx) + Math.PI / 2;
-        angle = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-        const idx = Math.floor((angle / (Math.PI * 2)) * teamColors.length) % teamColors.length;
-        return hexToRgb(teamColors[idx]);
-    };
     return function renderPreview(pattern, isScrap = false) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         const source = typeof pattern === "string"
             ? patternSourceFromBase64(pattern)
             : patternSourceFromMatrix(pattern);
@@ -56,8 +60,9 @@ export function createPreviewRenderer(options) {
         const availH = wrapRect.height;
         const primaryRgb = hexToRgb(primaryColorInput.value);
         const secondaryRgb = hexToRgb(secondaryColorInput.value);
-        const teamColors = (_a = getTeamColors === null || getTeamColors === void 0 ? void 0 : getTeamColors()) !== null && _a !== void 0 ? _a : null;
-        const simMap = (_b = getSimMap === null || getSimMap === void 0 ? void 0 : getSimMap()) !== null && _b !== void 0 ? _b : null;
+        // Parse once per render, not once per pixel.
+        const teamColors = (_b = (_a = getTeamColors === null || getTeamColors === void 0 ? void 0 : getTeamColors()) === null || _a === void 0 ? void 0 : _a.map(hexToRgb)) !== null && _b !== void 0 ? _b : null;
+        const simMap = (_c = getSimMap === null || getSimMap === void 0 ? void 0 : getSimMap()) !== null && _c !== void 0 ? _c : null;
         if (simMap && simMap.image && simMap.mask) {
             renderMapSimulation(source, simMap, primaryRgb, secondaryRgb, availW, availH, teamColors);
             return;
@@ -103,7 +108,7 @@ export function createPreviewRenderer(options) {
                 }
                 else {
                     const primary = teamColors
-                        ? (_c = teamPrimaryFor(teamColors, x, y, width, height)) !== null && _c !== void 0 ? _c : primaryRgb
+                        ? (_d = teamPrimaryFor(teamColors, x, y, width, height)) !== null && _d !== void 0 ? _d : primaryRgb
                         : primaryRgb;
                     data[i++] = primary.r;
                     data[i++] = primary.g;

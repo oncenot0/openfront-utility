@@ -23,6 +23,13 @@ import { createPatternLoader } from "./app/patternLoader.js";
 import { initPaneResizeControls } from "./app/paneResizeControls.js";
 import { createPreviewRenderer } from "./app/previewRenderer.js";
 import { createToolState } from "./app/toolState.js";
+import { createToolOptions } from "./app/toolOptions.js";
+import { createMirrorState } from "./app/mirror.js";
+import { createMirrorControls } from "./app/mirrorControls.js";
+import { createCheatSheet } from "./app/cheatSheet.js";
+import { setupToolShortcuts } from "./app/toolShortcuts.js";
+import { setupTooltips } from "./app/tooltips.js";
+import { setupOfflineSupport } from "./app/offlineSupport.js";
 import { createHistoryManager } from "./app/undoRedo.js";
 import { initWorkspaceControls } from "./app/workspaceControls.js";
 import { initThemeToggle } from "./app/themeToggle.js";
@@ -199,6 +206,10 @@ document.addEventListener("DOMContentLoaded", () => {
             "Anything drawn here is temporary and won't be saved or affect the main canvas.", SCRAP_TOAST_DURATION);
     };
     const toolState = createToolState({ toolButtons, sizeSlider, sizeOutput, sizeGroup });
+    const toolOptions = createToolOptions(toolState);
+    // Each canvas keeps its own mirror lines; the Mirror buttons toggle both.
+    const mainMirror = createMirrorState();
+    const scrapMirror = createMirrorState();
     const shapeTypeSelect = document.getElementById("shapeType");
     if (shapeTypeSelect) {
         shapeTypeSelect.addEventListener("change", () => {
@@ -220,12 +231,17 @@ document.addEventListener("DOMContentLoaded", () => {
         clipboard,
         onPatternChange: () => { if (!isScrapActive)
             updateOutput(); },
+        onStrokeStart: () => mainHistory.beginBatch(),
+        onStrokeEnd: () => { mainHistory.endBatch(); updateHistoryButtons(); },
+        mirror: mainMirror,
+        toolOptions,
     });
     const mainDrawingTools = createDrawingTools({
         getTileWidth: mainGrid.getTileWidth,
         getTileHeight: mainGrid.getTileHeight,
         isCellActive: mainGrid.isCellActive,
         setCellActive: mainGrid.setCellActive,
+        setDrawCellActive: mainGrid.setCellMirrored,
     });
     mainGrid.setDrawingTools(mainDrawingTools);
     handleGuideChange = () => {
@@ -251,14 +267,32 @@ document.addEventListener("DOMContentLoaded", () => {
         fixedHeight: SCRAP_SIZE,
         onPatternChange: () => { if (isScrapActive)
             updateOutput(); },
+        onStrokeStart: () => scrapHistory.beginBatch(),
+        onStrokeEnd: () => { scrapHistory.endBatch(); updateHistoryButtons(); },
+        mirror: scrapMirror,
+        toolOptions,
     });
     const scrapDrawingTools = createDrawingTools({
         getTileWidth: scrapGrid.getTileWidth,
         getTileHeight: scrapGrid.getTileHeight,
         isCellActive: scrapGrid.isCellActive,
         setCellActive: scrapGrid.setCellActive,
+        setDrawCellActive: scrapGrid.setCellMirrored,
     });
     scrapGrid.setDrawingTools(scrapDrawingTools);
+    // ── Mirror lines, shortcuts, tooltips ─────────────────────────────────────
+    const mirrorControls = createMirrorControls({
+        xButton: document.getElementById("mirrorXBtn"),
+        yButton: document.getElementById("mirrorYBtn"),
+        grids: [
+            { gridDiv, state: mainMirror, getWidth: mainGrid.getTileWidth, getHeight: mainGrid.getTileHeight },
+            { gridDiv: scrapGridDiv, state: scrapMirror, getWidth: scrapGrid.getTileWidth, getHeight: scrapGrid.getTileHeight },
+        ],
+    });
+    const cheatSheet = createCheatSheet(document.getElementById("shortcutsBtn"));
+    setupToolShortcuts({ toolState, mirror: mirrorControls, cheatSheet });
+    setupTooltips();
+    setupOfflineSupport();
     // Helper — active grid
     const activeGrid = () => (isScrapActive ? scrapGrid : mainGrid);
     // ── History managers ──────────────────────────────────────────────────────
@@ -593,14 +627,8 @@ document.addEventListener("DOMContentLoaded", () => {
         tileHeightInput,
         tileWidthValue,
         tileHeightValue,
-        onPatternLoaded: (pattern) => {
-            // Also update scale tabs from decoded
-            const base64 = base64Input.value;
-            try {
-                const decoded = decodePatternBase64(base64);
-                setScale(decoded.scale);
-            }
-            catch ( /* ignore */_a) { /* ignore */ }
+        onPatternLoaded: (pattern, scale) => {
+            setScale(scale);
             mainGrid.generateGrid(pattern);
         },
     });

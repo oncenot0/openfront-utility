@@ -84,17 +84,29 @@ export function rotateSelection(pattern, selection, direction) {
         return { pattern, rotatedSelection: selection };
     const height = pattern.length;
     const width = (_b = (_a = pattern[0]) === null || _a === void 0 ? void 0 : _a.length) !== null && _b !== void 0 ? _b : 0;
-    // Compute centroid of ALL selected cells (not just active)
-    let sumX = 0, sumY = 0;
     const cells = [];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     selection.forEach((key) => {
         const [x, y] = key.split(",").map(Number);
         cells.push({ x, y });
-        sumX += x;
-        sumY += y;
+        if (x < minX)
+            minX = x;
+        if (x > maxX)
+            maxX = x;
+        if (y < minY)
+            minY = y;
+        if (y > maxY)
+            maxY = y;
     });
-    const cx = sumX / cells.length;
-    const cy = sumY / cells.length;
+    // Rotate inside the selection's bounding box using exact integer maths.
+    // A w x h box becomes h x w. Its top-left moves by trunc((w-h)/2) so the box
+    // stays centred as closely as whole cells allow; the shift for the following
+    // rotation is the exact opposite, so rotating right then left (or four times
+    // in one direction) always returns to the original, with no drift.
+    const w = maxX - minX + 1;
+    const h = maxY - minY + 1;
+    const shiftX = Math.trunc((w - h) / 2);
+    const shiftY = Math.trunc((h - w) / 2);
     const next = pattern.map((row) => row.slice());
     const newSel = new Set();
     // Clear selection area in result
@@ -104,17 +116,13 @@ export function rotateSelection(pattern, selection, direction) {
     // Rotate each pixel
     cells.forEach(({ x, y }) => {
         var _a;
-        const dx = x - cx;
-        const dy = y - cy;
-        let nx, ny;
-        if (direction === "right") {
-            nx = Math.round(cx - dy);
-            ny = Math.round(cy + dx);
-        }
-        else {
-            nx = Math.round(cx + dy);
-            ny = Math.round(cy - dx);
-        }
+        const rx = x - minX;
+        const ry = y - minY;
+        // right = clockwise: (rx, ry) -> (h-1-ry, rx); left = counter-clockwise: (ry, w-1-rx)
+        const nrx = direction === "right" ? h - 1 - ry : ry;
+        const nry = direction === "right" ? rx : w - 1 - rx;
+        const nx = minX + shiftX + nrx;
+        const ny = minY + shiftY + nry;
         if (nx >= 0 && ny >= 0 && nx < width && ny < height) {
             // Only copy active pixels
             if (((_a = pattern[y]) === null || _a === void 0 ? void 0 : _a[x]) === 1) {

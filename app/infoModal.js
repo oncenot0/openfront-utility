@@ -9,13 +9,23 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 const CHANGELOG_URL = "https://raw.githubusercontent.com/BrayFlex/openfront-utility/main/CHANGELOG.md";
 const CHANGELOG_LINK = "https://github.com/BrayFlex/openfront-utility/blob/main/CHANGELOG.md";
-const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const escapeHtml = (s) => s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+// Only http(s), same-page (#) and relative links become anchors; anything else
+// (javascript:, data:, ...) is left as plain text.
+const isSafeHref = (url) => /^(https?:\/\/|#|\.{0,2}\/)/i.test(url);
 const renderInline = (line) => {
     let out = escapeHtml(line);
     out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
     out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     out = out.replace(/(^|[^*])\*([^*\n]+)\*(?![*])/g, "$1<em>$2</em>");
-    out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, text, url) => isSafeHref(url)
+        ? `<a href="${url}" target="_blank" rel="noopener">${text}</a>`
+        : match);
     return out;
 };
 export function renderMarkdown(md) {

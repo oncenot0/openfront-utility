@@ -1,14 +1,25 @@
+import { brushExtent, lineCells } from "./lineGeometry.js";
+import { mirroredPoints } from "./mirror.js";
+import { computeGradientPattern, ditherBrushAction, ditherPatternOn, regionBounds, } from "./ditherTools.js";
 import { getCircleCells } from "./circleGeometry.js";
 import { invertPattern, rotateSelection, shiftPatternDown, shiftPatternLeft, shiftPatternRight, shiftPatternUp, shiftSelection, flipSelectionH, flipSelectionV, } from "./patternTransforms.js";
 // ─── Implementation ───────────────────────────────────────────────────────────
 export function createGridManager(options) {
-    const { gridDiv, tileWidthInput, tileHeightInput, tileWidthValue, tileHeightValue, gridScaleInput, guideState, toolState, clipboard, drawingTools: initialDrawingTools, fixedWidth, fixedHeight, onPatternChange, } = options;
+    const { gridDiv, tileWidthInput, tileHeightInput, tileWidthValue, tileHeightValue, gridScaleInput, guideState, toolState, clipboard, drawingTools: initialDrawingTools, fixedWidth, fixedHeight, onPatternChange, onStrokeStart, onStrokeEnd, mirror, toolOptions, } = options;
     // ── State ─────────────────────────────────────────────────────────────────
     let drawingTools = initialDrawingTools !== null && initialDrawingTools !== void 0 ? initialDrawingTools : null;
     let tileWidth = parseInt(tileWidthInput.value);
     let tileHeight = parseInt(tileHeightInput.value);
     let isMouseDown = false;
     let penToggleState = null;
+    // A pencil stroke runs from mouse-down to mouse-up. `lastPencilCell` lets us
+    // join consecutive pointer positions so a fast drag doesn't skip cells.
+    let strokeActive = false;
+    let lastPencilCell = null;
+    let pencilPaintedOnMouseDown = false;
+    // Gradient tool: a drag from lineStart to gradientEnd.
+    let gradientDragging = false;
+    let gradientEnd = null;
     let currentHeight = 0;
     let currentWidth = 0;
     let patternState = [];
@@ -216,20 +227,118 @@ export function createGridManager(options) {
         }
         pastePreviewCells = pts;
     };
+    // ── Pencil stroke lifecycle ───────────────────────────────────────────────
+    const beginStroke = () => {
+        if (strokeActive)
+            return;
+        strokeActive = true;
+        onStrokeStart === null || onStrokeStart === void 0 ? void 0 : onStrokeStart();
+    };
+    const endStroke = () => {
+        lastPencilCell = null;
+        if (!strokeActive)
+            return;
+        strokeActive = false;
+        onStrokeEnd === null || onStrokeEnd === void 0 ? void 0 : onStrokeEnd();
+    };
+    // Paint a cell and, when Mirror X/Y is on, its reflections. Reflections obey
+    // the active selection just like the cell the user actually touched.
+    const setCellMirrored = (x, y, active) => {
+        if (!mirror || (!mirror.x && !mirror.y)) {
+            setCellActive(x, y, active);
+            return;
+        }
+        for (const [mx, my] of mirroredPoints(x, y, mirror, tileWidth, tileHeight)) {
+            if (activeSelection.size > 0 && !activeSelection.has(key(mx, my)))
+                continue;
+            setCellActive(mx, my, active);
+        }
+    };
     // ── Pencil brush ──────────────────────────────────────────────────────────
     const applyPencilBrush = (cx, cy, activate) => {
         const size = toolState.getPencilSize();
-        const radius = Math.floor(size / 2);
+        // Exactly size x size cells (see brushExtent for how even sizes are placed).
+        const { before, after } = brushExtent(size);
         const sel = activeSelection.size > 0 ? activeSelection : undefined;
-        for (let by = cy - radius; by <= cy + radius; by++) {
-            for (let bx = cx - radius; bx <= cx + radius; bx++) {
+        for (let by = cy - before; by <= cy + after; by++) {
+            for (let bx = cx - before; bx <= cx + after; bx++) {
                 if (!isInBounds(bx, by))
                     continue;
                 if (sel && !sel.has(key(bx, by)))
                     continue;
-                setCellActive(bx, by, activate);
+                setCellMirrored(bx, by, activate);
             }
         }
+    };
+    // ── Dither brush ──────────────────────────────────────────────────────────
+    // Paints a dot pattern anchored to the grid. In "add" mode it only ever turns
+    // cells on, so pixels that are already there are left alone.
+    const applyDitherBrush = (cx, cy) => {
+        var _a, _b;
+        const size = toolState.getDitherSize();
+        const { before, after } = brushExtent(size);
+        const density = (_a = toolOptions === null || toolOptions === void 0 ? void 0 : toolOptions.getDitherDensity()) !== null && _a !== void 0 ? _a : 50;
+        const mode = (_b = toolOptions === null || toolOptions === void 0 ? void 0 : toolOptions.getDitherMode()) !== null && _b !== void 0 ? _b : "add";
+        const sel = activeSelection.size > 0 ? activeSelection : undefined;
+        for (let by = cy - before; by <= cy + after; by++) {
+            for (let bx = cx - before; bx <= cx + after; bx++) {
+                if (!isInBounds(bx, by))
+                    continue;
+                if (sel && !sel.has(key(bx, by)))
+                    continue;
+                const action = ditherBrushAction(ditherPatternOn(bx, by, density), mode);
+                if (action === null)
+                    continue;
+                setCellMirrored(bx, by, action);
+            }
+        }
+    };
+    const paintBrush = (tool, cx, cy) => {
+        if (tool === "ditherBrush")
+            applyDitherBrush(cx, cy);
+        else
+            applyPencilBrush(cx, cy, penToggleState !== null && penToggleState !== void 0 ? penToggleState : true);
+    };
+    // ── Gradient fill ─────────────────────────────────────────────────────────
+    const commitGradient = () => {
+        const start = lineStart;
+        const end = gradientEnd;
+        gradientDragging = false;
+        gradientEnd = null;
+        setLineStart(null); // also clears the drag preview line
+        if (!start || !toolOptions)
+            return;
+        const region = activeSelection.size > 0 ? activeSelection : null;
+        let from = start;
+        let to = end !== null && end !== void 0 ? end : start;
+        if (from.x === to.x && from.y === to.y) {
+            // A plain click: fade from the top of the area to the bottom.
+            const b = regionBounds(region, tileWidth, tileHeight);
+            const midX = Math.round((b.minX + b.maxX) / 2);
+            from = { x: midX, y: b.minY };
+            to = { x: midX, y: b.maxY };
+        }
+        const result = computeGradientPattern({
+            width: tileWidth,
+            height: tileHeight,
+            from,
+            to,
+            region,
+            style: toolOptions.getGradientStyle(),
+            reverse: toolOptions.getGradientReverse(),
+        });
+        const keepExisting = toolOptions.getGradientMode() === "add";
+        for (let y = 0; y < tileHeight; y++) {
+            for (let x = 0; x < tileWidth; x++) {
+                if (region && !region.has(key(x, y)))
+                    continue;
+                const on = result[y][x] === 1;
+                if (keepExisting && !on)
+                    continue;
+                setCellActive(x, y, on);
+            }
+        }
+        onPatternChange();
     };
     // ── Paste commit ──────────────────────────────────────────────────────────
     const paste = (anchorX, anchorY, clipboard) => {
@@ -386,20 +495,26 @@ export function createGridManager(options) {
             gridDiv.classList.add("select-mode");
         }
     });
+    const releaseShift = () => {
+        isShiftDown = false;
+        // Only remove highlight if select tool isn't permanently active
+        if (toolState.getCurrentTool() !== "selectArea") {
+            selectAreaBtn === null || selectAreaBtn === void 0 ? void 0 : selectAreaBtn.classList.remove("selected");
+        }
+        gridDiv.classList.remove("select-mode");
+    };
     document.addEventListener("keyup", (e) => {
         if (e.key === "Shift") {
-            isShiftDown = false;
-            // Only remove highlight if select tool isn't permanently active
-            if (toolState.getCurrentTool() !== "selectArea") {
-                selectAreaBtn === null || selectAreaBtn === void 0 ? void 0 : selectAreaBtn.classList.remove("selected");
-            }
-            gridDiv.classList.remove("select-mode");
+            releaseShift();
         }
     });
     document.body.addEventListener("mousedown", () => (isMouseDown = true));
     document.body.addEventListener("mouseup", () => {
         isMouseDown = false;
         penToggleState = null;
+        endStroke();
+        if (gradientDragging)
+            commitGradient();
         // Commit Select Area drag regardless of current tool if we started one
         if (selectAreaStart && selectAreaEnd) {
             const rect = buildRectSet(selectAreaStart, selectAreaEnd);
@@ -415,7 +530,22 @@ export function createGridManager(options) {
             renderSelection();
         }
     });
+    // If the window loses focus (alt-tab) mid-stroke or while Shift is held, the
+    // matching mouseup/keyup never reaches us — reset so nothing gets stuck.
+    window.addEventListener("blur", () => {
+        isMouseDown = false;
+        penToggleState = null;
+        endStroke();
+        if (gradientDragging) {
+            gradientDragging = false;
+            gradientEnd = null;
+            setLineStart(null);
+        }
+        if (isShiftDown)
+            releaseShift();
+    });
     gridDiv.addEventListener("mouseleave", () => {
+        lastPencilCell = null;
         clearCirclePreview();
         clearStarPreview();
         clearLinePreview();
@@ -631,9 +761,28 @@ export function createGridManager(options) {
                 // ── Event handlers ─────────────────────────────────────────────
                 // Capture x/y in closure (re-assign to avoid stale capture issue)
                 const cx = x, cy = y;
-                cell.onmousedown = () => {
+                cell.onmousedown = (e) => {
                     const actualTool = toolState.getCurrentTool();
                     const tool = isShiftDown ? "selectArea" : actualTool;
+                    pencilPaintedOnMouseDown = false;
+                    // Paint the cell the stroke starts on, and decide whether this
+                    // stroke draws or erases from that cell's state.
+                    if ((tool === "pencil" || tool === "ditherBrush") && e.button === 0) {
+                        beginStroke();
+                        if (tool === "pencil")
+                            penToggleState = !isCellActive(cx, cy);
+                        paintBrush(tool, cx, cy);
+                        lastPencilCell = { x: cx, y: cy };
+                        pencilPaintedOnMouseDown = true;
+                        onPatternChange();
+                        return;
+                    }
+                    if (tool === "gradient" && e.button === 0) {
+                        gradientDragging = true;
+                        gradientEnd = { x: cx, y: cy };
+                        setLineStart({ x: cx, y: cy });
+                        return;
+                    }
                     if (tool === "selectArea") {
                         selectAreaStart = { x: cx, y: cy };
                         selectAreaEnd = { x: cx, y: cy };
@@ -654,8 +803,22 @@ export function createGridManager(options) {
                     const tool = toolState.getCurrentTool();
                     const sel = activeSelection.size > 0 ? activeSelection : undefined;
                     if (tool === "pencil") {
+                        // A real mouse press already painted on mouse-down; this click is
+                        // just its echo. A synthetic click (no mouse-down) still paints.
+                        if (pencilPaintedOnMouseDown) {
+                            pencilPaintedOnMouseDown = false;
+                            return;
+                        }
                         const shouldActivate = !isCellActive(cx, cy);
                         applyPencilBrush(cx, cy, shouldActivate);
+                        onPatternChange();
+                    }
+                    else if (tool === "ditherBrush") {
+                        if (pencilPaintedOnMouseDown) {
+                            pencilPaintedOnMouseDown = false;
+                            return;
+                        }
+                        applyDitherBrush(cx, cy);
                         onPatternChange();
                     }
                     else if (tool === "line") {
@@ -709,10 +872,21 @@ export function createGridManager(options) {
                         renderSelection();
                         return;
                     }
-                    if (isMouseDown && tool === "pencil") {
-                        if (penToggleState === null)
+                    if (tool === "gradient" && gradientDragging && isMouseDown) {
+                        gradientEnd = { x: cx, y: cy };
+                        previewLine(cx, cy);
+                        return;
+                    }
+                    if (isMouseDown && (tool === "pencil" || tool === "ditherBrush")) {
+                        beginStroke();
+                        if (tool === "pencil" && penToggleState === null)
                             penToggleState = !isCellActive(cx, cy);
-                        applyPencilBrush(cx, cy, penToggleState);
+                        // Join the previous cell to this one so fast drags leave no gaps.
+                        const from = lastPencilCell !== null && lastPencilCell !== void 0 ? lastPencilCell : { x: cx, y: cy };
+                        for (const [lx, ly] of lineCells(from.x, from.y, cx, cy)) {
+                            paintBrush(tool, lx, ly);
+                        }
+                        lastPencilCell = { x: cx, y: cy };
                         onPatternChange();
                         return;
                     }
@@ -820,6 +994,7 @@ export function createGridManager(options) {
         isCellActive,
         setCellActive,
         setDrawingTools,
+        setCellMirrored,
         getActiveSelection: () => activeSelection,
         clearSelection,
         hasSelection,

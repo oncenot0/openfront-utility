@@ -1,6 +1,7 @@
 import { create as createNoUiSlider, PipsMode } from "nouislider";
 const TOOL_SIZE_CONFIGS = {
     pencil: { min: 1, max: 9, step: 1, defaultValue: 1, label: "Size" },
+    ditherBrush: { min: 1, max: 12, step: 1, defaultValue: 4, label: "Size" },
     circle: { min: 1, max: 30, step: 1, defaultValue: 7, label: "Size" },
     shape: { min: 1, max: 30, step: 1, defaultValue: 5, label: "Size" },
 };
@@ -142,6 +143,22 @@ export function createToolState(options) {
             if (currentTool === "pencil")
                 return getSliderValue();
             return (_a = rememberedSizes["pencil"]) !== null && _a !== void 0 ? _a : 1;
+        },
+        getDitherSize: () => {
+            var _a;
+            if (currentTool === "ditherBrush")
+                return getSliderValue();
+            return (_a = rememberedSizes["ditherBrush"]) !== null && _a !== void 0 ? _a : 4;
+        },
+        adjustSize: (delta) => {
+            const config = TOOL_SIZE_CONFIGS[currentTool];
+            if (!config)
+                return;
+            const next = Math.max(config.min, Math.min(config.max, getSliderValue() + delta));
+            slider.set(next);
+            rememberedSizes[currentTool] = next;
+            if (sizeOutput)
+                sizeOutput.value = String(next);
         },
         getShapeRadius: () => {
             var _a;

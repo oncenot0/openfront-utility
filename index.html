@@ -8,7 +8,10 @@
     <link rel="stylesheet" href="index.css" />
     <link rel="stylesheet" href="styles/circle-tool.css" />
     <link rel="stylesheet" href="styles/image-import.css" />
+    <link rel="stylesheet" href="styles/tools-extra.css" />
     <link rel="shortcut icon" type="image/x-icon" href="favicon.ico?v=23">
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#1080ca">
     <script type="importmap">
     {
       "imports": {
@@ -34,6 +37,12 @@
                 <span class="theme-toggle-icon theme-toggle-moon">⏾</span>
               </span>
             </label>
+            <button id="shortcutsBtn" class="info-btn" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+                <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"></path>
+              </svg>
+            </button>
             <button id="infoModalBtn" class="info-btn" aria-label="Pattern Utility Information" title="Tool Information">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="10"></circle>
@@ -81,6 +90,34 @@
             <button id="tool-shade" class="tool-btn" data-tool="shade" title="Shade — checkerboard flood fill; with selection: shades entire selection">
               <span class="tool-icon">▦</span>
               <span class="tool-label">Shade</span>
+            </button>
+          </div>
+
+          <div class="tool-strip-separator"></div>
+
+          <!-- Dither -->
+          <div class="tool-strip-group">
+            <button id="tool-ditherBrush" class="tool-btn" data-tool="ditherBrush" title="Dither Brush — paints a dot pattern (set density in the panel)">
+              <span class="tool-icon">░</span>
+              <span class="tool-label">Dither</span>
+            </button>
+            <button id="tool-gradient" class="tool-btn" data-tool="gradient" title="Gradient Fill — drag to fade from solid to empty; fills the selection or whole canvas">
+              <span class="tool-icon">◧</span>
+              <span class="tool-label">Gradient</span>
+            </button>
+          </div>
+
+          <div class="tool-strip-separator"></div>
+
+          <!-- Mirror -->
+          <div class="tool-strip-group">
+            <button id="mirrorXBtn" class="tool-btn action-btn mirror-btn" type="button" aria-pressed="false" title="Mirror left/right — draw on both sides of a line you can drag">
+              <span class="tool-icon">⇋</span>
+              <span class="tool-label">Mirror X</span>
+            </button>
+            <button id="mirrorYBtn" class="tool-btn action-btn mirror-btn" type="button" aria-pressed="false" title="Mirror top/bottom — draw above and below a line you can drag">
+              <span class="tool-icon">⇅</span>
+              <span class="tool-label">Mirror Y</span>
             </button>
           </div>
 
@@ -290,6 +327,49 @@
               </div>
             </div>
 
+            <!-- Options for the Dither Brush / Gradient tools -->
+            <div id="toolOptions" class="tool-options" hidden>
+              <div id="ditherOptions" hidden>
+                <div class="tool-options-title">Dither Brush</div>
+                <div class="tool-options-row">
+                  <span>Density</span><strong id="ditherDensityValue">50%</strong>
+                </div>
+                <input type="range" id="ditherDensity" class="range-input" min="1" max="99" value="50" />
+                <div id="ditherPresets" class="chip-row">
+                  <button type="button" data-density="12">12%</button>
+                  <button type="button" data-density="25">25%</button>
+                  <button type="button" data-density="50">50%</button>
+                  <button type="button" data-density="75">75%</button>
+                  <button type="button" data-density="88">88%</button>
+                </div>
+                <div class="tool-options-row"><span>On existing pixels</span></div>
+                <div id="ditherMode" class="segmented" role="radiogroup" aria-label="Dither brush mode">
+                  <button type="button" role="radio" data-value="add" title="Only adds dots; never removes pixels">Add</button>
+                  <button type="button" role="radio" data-value="replace" title="Overwrites the brush area with the pattern">Replace</button>
+                  <button type="button" role="radio" data-value="erase" title="Removes pixels where the pattern has dots">Erase</button>
+                </div>
+                <p id="ditherModeHint" class="tool-options-hint"></p>
+              </div>
+              <div id="gradientOptions" hidden>
+                <div class="tool-options-title">Gradient Fill</div>
+                <p class="tool-options-hint">Drag from where it should be solid to where it fades out. Fills the selection, or the whole canvas if nothing is selected. A plain click fades top to bottom.</p>
+                <label class="tool-options-row" for="gradientStyle"><span>Style</span></label>
+                <select id="gradientStyle">
+                  <option value="bayer-8" selected>Ordered 8x8 (tiles cleanly)</option>
+                  <option value="bayer-4">Ordered 4x4 (coarser dots)</option>
+                  <option value="floyd-steinberg">Floyd-Steinberg (smooth)</option>
+                  <option value="atkinson">Atkinson (crisp)</option>
+                </select>
+                <label class="tool-options-check"><input type="checkbox" id="gradientReverse" /> Start empty (reverse)</label>
+                <div class="tool-options-row"><span>On existing pixels</span></div>
+                <div id="gradientMode" class="segmented" role="radiogroup" aria-label="Gradient mode">
+                  <button type="button" role="radio" data-value="replace">Replace</button>
+                  <button type="button" role="radio" data-value="add">Keep &amp; add</button>
+                </div>
+                <p id="gradientModeHint" class="tool-options-hint"></p>
+              </div>
+            </div>
+
             <div id="gridViewport" class="grid-viewport">
               <!-- Main canvas -->
               <div id="mainGridWrap" class="grid-frame">
@@ -312,7 +392,7 @@
             </div>
           </div>
         <!-- Watermark -->
-        <div class="canvas-credit">Made with 🍫 by Aotumuri &amp; BrayFlex</div>
+        <div class="canvas-credit">Made with 🍫 by Aotumuri &amp; BrayFlex &amp; Oncenot</div>
 
         </section>
 
@@ -462,10 +542,10 @@
 
         <p>💬 <strong>Feedback &amp; Suggestions</strong><br>
           Something broken or missing? Submit an issue or suggestion on
-          <a href="https://github.com/BrayFlex/openfront-utility/discussions" target="_blank">GitHub Discussions</a>.</p>
+          <a href="https://github.com/oncenot0/openfront-utility/discussions" target="_blank">GitHub Discussions</a>.</p>
 
         <div style="text-align: center; margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px;">
-          Made with 🍫 by Aotumuri &amp; BrayFlex
+          Made with 🍫 by Aotumuri &amp; BrayFlex &amp; Oncenot
         </div>
       </div>
       <div class="modal-body info-panel" data-panel="guide" hidden>
@@ -538,6 +618,7 @@
             <p>Use these tools to design your pattern and convert it to game code:</p>
             <a href="https://aotumuri.github.io/openfront-utility/" target="_blank">https://aotumuri.github.io/openfront-utility/</a>
             <a href="https://brayflex.github.io/openfront-utility/" target="_blank">https://brayflex.github.io/openfront-utility/</a>
+            <a href="https://oncenot0.github.io/openfront-utility/" target="_blank">https://oncenot0.github.io/openfront-utility/</a>
           </div>
           <div class="link-card">
             <strong>🖼️ Converter for normal images and other drawing apps</strong>
@@ -552,6 +633,11 @@
             <strong>🔗 This Repository (Fork)</strong>
             <p>BrayFlex's fork with additional improvements:</p>
             <a href="https://github.com/BrayFlex/openfront-utility" target="_blank">https://github.com/BrayFlex/openfront-utility</a>
+          </div>
+          <div class="link-card">
+            <strong>🔗 This Repository (Fork)</strong>
+            <p>Oncenot's fork with additional improvements:</p>
+            <a href="https://github.com/oncenot0/openfront-utility" target="_blank">https://github.com/oncenot0/openfront-utility</a>
           </div>
         </div>
       </div>
